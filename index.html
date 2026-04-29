@@ -2,7 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Leah's Cave">
+<meta name="theme-color" content="#1a0033">
+<meta name="screen-orientation" content="landscape">
+<link rel="manifest" href='data:application/manifest+json,{"name":"Leah%27s Cave Adventure","short_name":"Leah Cave","start_url":".","display":"fullscreen","orientation":"landscape","background_color":"%231a0033","theme_color":"%23c2185b","icons":[{"src":"data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 200 200%22%3E%3Crect fill=%22%23c2185b%22 width=%22200%22 height=%22200%22 rx=%2230%22/%3E%3Ctext x=%22100%22 y=%22130%22 text-anchor=%22middle%22 font-size=%22120%22%3E%F0%9F%92%9D%3C/text%3E%3C/svg%3E","sizes":"192x192","type":"image/svg+xml"}]}'>
 <title>🏔️ Leah's Cave Adventure - A Gift for Mom 💝</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -286,7 +293,7 @@
     /* Hide leah label - already shown by character on screen */
     #leahLabel { display: none; }
     /* Mute button - smaller circle */
-    #muteBtn {
+    #muteBtn, #fullscreenBtn {
       width: 28px !important;
       height: 28px !important;
       font-size: 0.85em !important;
@@ -548,6 +555,7 @@
     <div class="info-item"><span id="gemsLabel">💎 Gems:</span> <span id="gemCount">0</span>/10</div>
     <div class="info-item">⏰ <span id="timer">--:--</span></div>
     <button id="muteBtn" onclick="toggleMute()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1.1em; cursor:pointer;" title="Mute/Unmute">🔊</button>
+    <button id="fullscreenBtn" onclick="toggleFullscreen()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="Fullscreen">⛶</button>
   </div>
   
   <div class="gem-progress" id="gemProgress"></div>
@@ -732,6 +740,49 @@ function toggleMute() {
   if (masterGain) masterGain.gain.value = audioMuted ? 0 : 0.7;
   const btn = document.getElementById('muteBtn');
   if (btn) btn.textContent = audioMuted ? '🔇' : '🔊';
+}
+
+// FULLSCREEN API - hides browser chrome (URL bar) on mobile
+function toggleFullscreen() {
+  const elem = document.documentElement;
+  
+  if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+    // Enter fullscreen
+    if (elem.requestFullscreen) {
+      elem.requestFullscreen().catch(e => console.warn('Fullscreen failed:', e));
+    } else if (elem.webkitRequestFullscreen) {
+      elem.webkitRequestFullscreen();
+    } else if (elem.msRequestFullscreen) {
+      elem.msRequestFullscreen();
+    }
+    
+    // Try to lock orientation to landscape (mobile)
+    if (screen.orientation && screen.orientation.lock) {
+      screen.orientation.lock('landscape').catch(() => {/* not supported */});
+    }
+  } else {
+    // Exit fullscreen
+    if (document.exitFullscreen) {
+      document.exitFullscreen();
+    } else if (document.webkitExitFullscreen) {
+      document.webkitExitFullscreen();
+    } else if (document.msExitFullscreen) {
+      document.msExitFullscreen();
+    }
+  }
+}
+
+// Update icon when fullscreen changes
+document.addEventListener('fullscreenchange', updateFullscreenBtn);
+document.addEventListener('webkitfullscreenchange', updateFullscreenBtn);
+function updateFullscreenBtn() {
+  const btn = document.getElementById('fullscreenBtn');
+  if (!btn) return;
+  const isFs = document.fullscreenElement || document.webkitFullscreenElement;
+  btn.textContent = isFs ? '⛶' : '⛶';
+  btn.title = isFs ? 'Exit fullscreen' : 'Fullscreen';
+  // Trigger resize after fullscreen changes
+  setTimeout(() => { if (typeof resizeCanvas === 'function') resizeCanvas(); }, 100);
 }
 
 // Helper: play a tone with envelope
@@ -5102,6 +5153,19 @@ canvas.addEventListener('touchend', (e) => {
   document.addEventListener('mouseup', stopMoving);
   document.addEventListener('mouseleave', stopMoving);
 })();
+
+// AUTO-FULLSCREEN: One-time tap on canvas in landscape mode requests fullscreen
+// (browsers require a user gesture to allow fullscreen)
+let fullscreenPrompted = false;
+canvas.addEventListener('click', function tryFullscreen() {
+  // Only prompt in landscape on mobile, and only once
+  const isLandscape = window.innerHeight < window.innerWidth && window.innerHeight < 600;
+  const isMobile = /Mobi|Android/i.test(navigator.userAgent);
+  if (!fullscreenPrompted && isMobile && isLandscape && !document.fullscreenElement && !document.webkitFullscreenElement) {
+    fullscreenPrompted = true;
+    toggleFullscreen();
+  }
+}, true);
 
 // ==================== INIT ====================
 function restartGame() {
