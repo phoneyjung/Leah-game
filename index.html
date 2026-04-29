@@ -120,6 +120,8 @@
     border: 5px solid #c2185b;
     border-radius: 15px;
     background: #000;
+    width: 800px;
+    height: 600px;
     max-width: 100%;
     cursor: pointer;
   }
@@ -223,53 +225,114 @@
   }
   
   /* Landscape mode - optimize for horizontal phone use */
-  @media (orientation: landscape) and (max-height: 600px) {
-    body { padding: 5px; }
-    .game-container {
-      padding: 8px;
-      border-radius: 10px;
-      max-width: 100vw;
+  /* PORTRAIT MOBILE - bigger canvas */
+  @media (max-width: 700px) and (orientation: portrait) {
+    body { padding: 4px; }
+    .game-container { padding: 6px; }
+    .canvas-wrapper { margin: 4px 0; }
+    #gameCanvas {
+      width: 100% !important;
+      height: 65vh !important;
+      max-height: 65vh;
+      object-fit: cover;
     }
-    h1 { font-size: 1em; margin: 2px 0; }
-    .subtitle { font-size: 0.7em; margin: 2px 0; display: none; }
+  }
+  
+  /* LANDSCAPE MOBILE - FULLSCREEN MODE */
+  @media (orientation: landscape) and (max-height: 600px) {
+    body {
+      padding: 0;
+      margin: 0;
+      overflow: hidden;
+      background: #000;
+    }
+    .game-container {
+      padding: 0;
+      border-radius: 0;
+      max-width: 100vw;
+      width: 100vw;
+      height: 100vh;
+      margin: 0;
+      box-shadow: none;
+      background: #000;
+      display: flex;
+      flex-direction: column;
+    }
+    /* Hide all the chrome */
+    h1, .subtitle, .controls, #poolStatus { display: none !important; }
+    
+    /* Compact info bar overlaid on top */
     .info-bar {
-      padding: 4px 10px;
+      position: absolute;
+      top: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 4px 12px;
       font-size: 0.8em;
-      gap: 8px;
+      gap: 10px;
+      z-index: 50;
+      opacity: 0.85;
+      border-radius: 20px;
+      background: linear-gradient(135deg, rgba(255, 107, 157, 0.9), rgba(255, 215, 0, 0.9));
     }
     .info-item { font-size: 0.85em; }
-    .gem-progress { margin: 3px 0; }
-    .gem-progress span { width: 12px; height: 12px; }
-    #poolStatus { font-size: 0.75em; }
-    .help-bar { margin: 4px 0; }
-    .help-btn { padding: 5px 10px; font-size: 0.8em; }
-    .cooldown-text { font-size: 0.8em; }
-    .canvas-wrapper {
-      margin: 4px 0;
-      max-width: 100%;
-    }
-    canvas {
-      max-width: 95vw;
-      max-height: 70vh;
-      width: auto;
-      height: auto;
-    }
-    .controls { font-size: 0.7em; margin: 4px 0; display: none; }
     
-    /* Make controls bigger and brighter in landscape */
+    /* Hide gem progress dots in landscape (info bar shows count) */
+    .gem-progress { display: none; }
+    
+    /* Help button overlaid on top right */
+    .help-bar {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      margin: 0;
+      z-index: 50;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 2px;
+    }
+    .help-btn {
+      padding: 6px 10px;
+      font-size: 0.75em;
+      opacity: 0.9;
+    }
+    .cooldown-text { font-size: 0.7em; opacity: 0.85; }
+    
+    /* Canvas takes ENTIRE screen */
+    .canvas-wrapper {
+      margin: 0;
+      max-width: 100vw;
+      width: 100vw;
+      height: 100vh;
+      flex: 1;
+    }
+    #gameCanvas {
+      border: none !important;
+      border-radius: 0 !important;
+      width: 100vw !important;
+      height: 100vh !important;
+      max-width: none !important;
+      max-height: none !important;
+      object-fit: cover;
+    }
+    
+    /* Bigger, brighter controls in fullscreen */
     .mobile-controls { display: block; }
     .dpad {
-      bottom: 15px;
-      left: 15px;
-      grid-template-columns: repeat(3, 50px);
-      grid-template-rows: repeat(3, 50px);
+      bottom: 20px;
+      left: 20px;
+      grid-template-columns: repeat(3, 55px);
+      grid-template-rows: repeat(3, 55px);
+      gap: 4px;
+      opacity: 0.65;
     }
     .attack-btn {
-      bottom: 30px;
-      right: 25px;
-      width: 85px;
-      height: 85px;
-      font-size: 1.8em;
+      bottom: 35px;
+      right: 30px;
+      width: 95px;
+      height: 95px;
+      font-size: 2em;
+      opacity: 0.75;
     }
   }
   
@@ -468,7 +531,7 @@
   </div>
   
   <div class="canvas-wrapper">
-    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <canvas id="gameCanvas"></canvas>
   </div>
   
   <div class="mobile-controls" id="mobileControls">
@@ -562,16 +625,47 @@
 // ==================== GAME CONFIG ====================
 const COLS = 35;
 const ROWS = 25;
-const CELL_SIZE = 28;
-const VIEW_WIDTH = 800;
-const VIEW_HEIGHT = 600;
-const VISION_RADIUS = 3.5;
+const CELL_SIZE = 44;  // Bigger cells for better visibility on mobile
+let VIEW_WIDTH = 800;  // Will be set dynamically based on canvas size
+let VIEW_HEIGHT = 600; // Will be set dynamically based on canvas size
+const VISION_RADIUS = 4.5; // Slightly larger so player sees more around them
 const HELP_COOLDOWN = 120; // 2 minutes
 const HELP_DURATION = 3; // 3 seconds of full vision
 const RESCUE_THRESHOLD = 90; // Daddy Phone rescues at 90s left
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
+
+// Make canvas resolution match its display size for crisp rendering
+function resizeCanvas() {
+  const rect = canvas.getBoundingClientRect();
+  // Use actual displayed size; cap at reasonable max
+  const w = Math.min(Math.max(rect.width, 320), 1600);
+  const h = Math.min(Math.max(rect.height, 240), 1200);
+  
+  // Set internal resolution to match display (with device pixel ratio for clarity)
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  
+  // Update view dimensions (in CSS pixels)
+  VIEW_WIDTH = w;
+  VIEW_HEIGHT = h;
+  
+  // Scale rendering context to handle dpr
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+// Initial size
+resizeCanvas();
+
+// Resize on window resize / orientation change
+window.addEventListener('resize', () => {
+  resizeCanvas();
+});
+window.addEventListener('orientationchange', () => {
+  setTimeout(resizeCanvas, 100); // wait for orientation to settle
+});
 
 // ==================== AUDIO SYSTEM (Web Audio API) ====================
 let audioCtx = null;
