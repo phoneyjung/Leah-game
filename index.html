@@ -238,7 +238,7 @@
     }
   }
   
-  /* LANDSCAPE MOBILE - FULLSCREEN MODE */
+  /* LANDSCAPE MOBILE - FULLSCREEN MODE - clean icon UI */
   @media (orientation: landscape) and (max-height: 600px) {
     body {
       padding: 0;
@@ -259,28 +259,43 @@
       flex-direction: column;
     }
     /* Hide all the chrome */
-    h1, .subtitle, .controls, #poolStatus { display: none !important; }
+    h1, .subtitle, .controls, #poolStatus, .gem-progress { display: none !important; }
     
-    /* Compact info bar overlaid on top */
+    /* Compact icon-only HUD - top left corner */
     .info-bar {
       position: absolute;
       top: 8px;
-      left: 50%;
-      transform: translateX(-50%);
-      padding: 4px 12px;
+      left: 8px;
+      transform: none;
+      padding: 5px 10px;
       font-size: 0.8em;
-      gap: 10px;
+      gap: 8px;
       z-index: 50;
       opacity: 0.85;
-      border-radius: 20px;
-      background: linear-gradient(135deg, rgba(255, 107, 157, 0.9), rgba(255, 215, 0, 0.9));
+      border-radius: 16px;
+      background: rgba(20, 15, 30, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      width: auto;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.5);
     }
-    .info-item { font-size: 0.85em; }
+    .info-item {
+      font-size: 0.85em;
+      color: #fff;
+      padding: 0 4px;
+    }
+    /* Hide leah label - already shown by character on screen */
+    #leahLabel { display: none; }
+    /* Mute button - smaller circle */
+    #muteBtn {
+      width: 28px !important;
+      height: 28px !important;
+      font-size: 0.85em !important;
+      padding: 0 !important;
+      border-width: 1px !important;
+      border-color: rgba(255,255,255,0.3) !important;
+    }
     
-    /* Hide gem progress dots in landscape (info bar shows count) */
-    .gem-progress { display: none; }
-    
-    /* Help button overlaid on top right */
+    /* Help button - icon-only circle in top-right corner */
     .help-bar {
       position: absolute;
       top: 8px;
@@ -288,15 +303,33 @@
       margin: 0;
       z-index: 50;
       flex-direction: column;
-      align-items: flex-end;
-      gap: 2px;
+      align-items: center;
+      gap: 0;
     }
     .help-btn {
-      padding: 6px 10px;
-      font-size: 0.75em;
-      opacity: 0.9;
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      padding: 0;
+      font-size: 1.4em;
+      opacity: 0.85;
+      border: 2px solid rgba(255,255,255,0.4);
+      background: linear-gradient(135deg, rgba(33, 150, 243, 0.85), rgba(13, 71, 161, 0.85));
+      color: white;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+      /* Hide text - show only icon via CSS */
+      font-size: 0;
+      position: relative;
     }
-    .cooldown-text { font-size: 0.7em; opacity: 0.85; }
+    .help-btn::before {
+      content: '🪄';
+      font-size: 22px;
+    }
+    .help-btn:disabled { opacity: 0.5; }
+    /* Hide cooldown text in landscape - icon brightness shows ready state */
+    .cooldown-text {
+      display: none;
+    }
     
     /* Canvas takes ENTIRE screen */
     .canvas-wrapper {
@@ -324,7 +357,7 @@
       grid-template-columns: repeat(3, 55px);
       grid-template-rows: repeat(3, 55px);
       gap: 4px;
-      opacity: 0.65;
+      opacity: 0.55;
     }
     .attack-btn {
       bottom: 35px;
@@ -332,7 +365,7 @@
       width: 95px;
       height: 95px;
       font-size: 2em;
-      opacity: 0.75;
+      opacity: 0.7;
     }
   }
   
