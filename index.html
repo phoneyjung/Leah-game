@@ -1087,6 +1087,104 @@ function stopBGM() {
   bgmNodes = [];
 }
 
+// EXCITING ESCAPE MUSIC - faster, dramatic minor key for cave collapsing
+function startEscapeBGM() {
+  if (!audioCtx) return;
+  stopBGM(); // stop calm music first
+  bgmRunning = true;
+  
+  // Dramatic minor-key chase melody - faster tempo
+  // Using A minor scale: A, B, C, D, E, F, G
+  const melodyNotes = [
+    // Verse 1 - urgent ascending
+    {f: 440, d: 0.25}, {f: 523.25, d: 0.25}, {f: 659.25, d: 0.25}, {f: 698.46, d: 0.5},
+    {f: 659.25, d: 0.25}, {f: 523.25, d: 0.25}, {f: 440, d: 0.5},
+    // Tension build
+    {f: 392, d: 0.25}, {f: 466.16, d: 0.25}, {f: 523.25, d: 0.5},
+    {f: 587.33, d: 0.25}, {f: 523.25, d: 0.25}, {f: 466.16, d: 0.5},
+    // Climax
+    {f: 698.46, d: 0.25}, {f: 659.25, d: 0.25}, {f: 587.33, d: 0.25}, {f: 523.25, d: 0.5},
+    {f: 440, d: 0.75}, {f: 0, d: 0.25},
+  ];
+  
+  let melodyTime = audioCtx.currentTime + 0.5;
+  function scheduleMelody() {
+    if (!bgmRunning) return;
+    melodyNotes.forEach(n => {
+      if (n.f > 0) {
+        // Lead melody (sawtooth - more aggressive sound)
+        const osc = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.value = n.f;
+        osc.connect(g);
+        g.connect(bgmGain);
+        g.gain.setValueAtTime(0, melodyTime);
+        g.gain.linearRampToValueAtTime(0.08, melodyTime + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.001, melodyTime + n.d);
+        osc.start(melodyTime);
+        osc.stop(melodyTime + n.d + 0.05);
+        
+        // Bass octave below
+        const bass = audioCtx.createOscillator();
+        const bg = audioCtx.createGain();
+        bass.type = 'triangle';
+        bass.frequency.value = n.f / 2;
+        bass.connect(bg); bg.connect(bgmGain);
+        bg.gain.setValueAtTime(0, melodyTime);
+        bg.gain.linearRampToValueAtTime(0.06, melodyTime + 0.02);
+        bg.gain.exponentialRampToValueAtTime(0.001, melodyTime + n.d);
+        bass.start(melodyTime);
+        bass.stop(melodyTime + n.d + 0.05);
+      }
+      melodyTime += n.d;
+    });
+    const nextLoop = (melodyTime - audioCtx.currentTime) * 1000;
+    setTimeout(scheduleMelody, Math.max(50, nextLoop - 200));
+  }
+  scheduleMelody();
+  
+  // Pulsing drum/heartbeat - urgent rhythm
+  function drumLoop() {
+    if (!bgmRunning) return;
+    const t = audioCtx.currentTime;
+    // Kick drum
+    const kick = audioCtx.createOscillator();
+    const kg = audioCtx.createGain();
+    kick.type = 'sine';
+    kick.frequency.setValueAtTime(120, t);
+    kick.frequency.exponentialRampToValueAtTime(40, t + 0.1);
+    kick.connect(kg); kg.connect(bgmGain);
+    kg.gain.setValueAtTime(0.3, t);
+    kg.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+    kick.start(t); kick.stop(t + 0.2);
+    
+    setTimeout(drumLoop, 400); // ~150 BPM heartbeat
+  }
+  drumLoop();
+  
+  // Occasional rumble/tension sweeps
+  function tensionLoop() {
+    if (!bgmRunning) return;
+    setTimeout(() => {
+      if (!bgmRunning) return;
+      const t = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(80, t);
+      osc.frequency.linearRampToValueAtTime(200, t + 1.5);
+      osc.connect(g); g.connect(bgmGain);
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(0.05, t + 0.5);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 1.5);
+      osc.start(t); osc.stop(t + 1.6);
+      tensionLoop();
+    }, 5000 + Math.random() * 3000);
+  }
+  tensionLoop();
+}
+
 // 300 IQ questions for 7-year-olds (English)
 // Categories: Math, Patterns, Animals, Colors, Shapes, Days/Time, Logic, Science, Language, Common Sense
 // ==================== LANGUAGE SYSTEM ====================
@@ -2664,42 +2762,35 @@ function updateCamera() {
   const targetZoom = getTargetZoom();
   cameraZoom += (targetZoom - cameraZoom) * 0.12;
   
-  // When zoomed out, keep camera centered on the maze midpoint instead of just Leah
-  // This prevents the camera from clamping awkwardly at the edges when fully zoomed out
   const effectiveViewW = VIEW_WIDTH / cameraZoom;
   const effectiveViewH = VIEW_HEIGHT / cameraZoom;
+  const mazeW = COLS * CELL_SIZE;
+  const mazeH = ROWS * CELL_SIZE;
   
-  // Blend between Leah-centered (zoom=1) and maze-centered (zoom<1)
-  const zoomBlend = (1.0 - cameraZoom) / (1.0 - 0.35); // 0 at normal, 1 at max zoom out
-  const blendT = Math.max(0, Math.min(1, zoomBlend));
-  
-  const leahTargetX = player.displayX * CELL_SIZE - effectiveViewW / 2 + CELL_SIZE / 2;
-  const leahTargetY = player.displayY * CELL_SIZE - effectiveViewH / 2 + CELL_SIZE / 2;
-  
-  const mazeCenterX = (COLS * CELL_SIZE) / 2 - effectiveViewW / 2;
-  const mazeCenterY = (ROWS * CELL_SIZE) / 2 - effectiveViewH / 2;
-  
-  const targetX = leahTargetX + (mazeCenterX - leahTargetX) * blendT;
-  const targetY = leahTargetY + (mazeCenterY - leahTargetY) * blendT;
-  
-  cameraX += (targetX - cameraX) * 0.15;
-  cameraY += (targetY - cameraY) * 0.15;
-  
-  // Clamp camera based on effective view (zoomed-out view sees more)
-  const minCamX = -((effectiveViewW - COLS * CELL_SIZE) / 2);
-  const minCamY = -((effectiveViewH - ROWS * CELL_SIZE) / 2);
-  
-  if (effectiveViewW >= COLS * CELL_SIZE) {
-    // Map fits horizontally - center it
-    cameraX = -(effectiveViewW - COLS * CELL_SIZE) / 2;
+  // If maze is smaller than effective view, ALWAYS center it (regardless of zoom level)
+  if (effectiveViewW >= mazeW) {
+    // Maze fits horizontally - center it on screen
+    cameraX = -(effectiveViewW - mazeW) / 2;
   } else {
-    cameraX = Math.max(0, Math.min(COLS * CELL_SIZE - effectiveViewW, cameraX));
+    // Maze is bigger than view - blend between Leah-centered and maze-centered based on zoom
+    const zoomBlend = Math.max(0, Math.min(1, (1.0 - cameraZoom) / (1.0 - 0.35)));
+    const leahTargetX = player.displayX * CELL_SIZE - effectiveViewW / 2 + CELL_SIZE / 2;
+    const mazeCenterX = mazeW / 2 - effectiveViewW / 2;
+    const targetX = leahTargetX + (mazeCenterX - leahTargetX) * zoomBlend;
+    cameraX += (targetX - cameraX) * 0.15;
+    cameraX = Math.max(0, Math.min(mazeW - effectiveViewW, cameraX));
   }
   
-  if (effectiveViewH >= ROWS * CELL_SIZE) {
-    cameraY = -(effectiveViewH - ROWS * CELL_SIZE) / 2;
+  if (effectiveViewH >= mazeH) {
+    // Maze fits vertically - center it on screen
+    cameraY = -(effectiveViewH - mazeH) / 2;
   } else {
-    cameraY = Math.max(0, Math.min(ROWS * CELL_SIZE - effectiveViewH, cameraY));
+    const zoomBlend = Math.max(0, Math.min(1, (1.0 - cameraZoom) / (1.0 - 0.35)));
+    const leahTargetY = player.displayY * CELL_SIZE - effectiveViewH / 2 + CELL_SIZE / 2;
+    const mazeCenterY = mazeH / 2 - effectiveViewH / 2;
+    const targetY = leahTargetY + (mazeCenterY - leahTargetY) * zoomBlend;
+    cameraY += (targetY - cameraY) * 0.15;
+    cameraY = Math.max(0, Math.min(mazeH - effectiveViewH, cameraY));
   }
 }
 
@@ -2737,11 +2828,19 @@ function draw() {
   }
   
   ctx.save();
-  // Apply zoom: scale around viewport center
-  ctx.translate(VIEW_WIDTH / 2, VIEW_HEIGHT / 2);
+  // Zoom transform: the world point at (cameraX + effectiveViewW/2, cameraY + effectiveViewH/2)
+  // should appear at the screen center (VIEW_WIDTH/2, VIEW_HEIGHT/2)
+  // Formula: screenX = (worldX - cameraX) * zoom
+  //   With effectiveView = VIEW/zoom, the world span shown = effectiveView
+  //   The world center shown = cameraX + effectiveView/2 = cameraX + VIEW/(2*zoom)
+  //
+  // We want: at the world center to appear at screen center
+  //   screen_x = (world_x - cameraX) * zoom
+  //   So: zoom * cameraX is the world's screen-space offset from origin
+  // Apply: scale(zoom), then translate(-cameraX, -cameraY) (in unscaled units, but ctx will scale)
+  // Wait - ctx.translate(x, y) AFTER ctx.scale(z) translates by (x*z, y*z) in screen pixels
+  // So for the maze to draw at world coords correctly:
   ctx.scale(cameraZoom, cameraZoom);
-  ctx.translate(-VIEW_WIDTH / 2, -VIEW_HEIGHT / 2);
-  // Then translate to camera position
   ctx.translate(-cameraX + shakeX, -cameraY + shakeY);
   
   // Calculate visible area accounting for zoom (effective view is larger when zoomed out)
@@ -2963,7 +3062,8 @@ function drawLeah() {
   
   const size = CELL_SIZE * 0.7;
   
-  ctx.fillStyle = '#ff6b9d';
+  // School uniform DRESS (light blue/gray) with collar
+  ctx.fillStyle = '#b8c5d6';
   ctx.beginPath();
   ctx.moveTo(px, py + 2);
   ctx.lineTo(px - size/2.5, py + size/2);
@@ -2971,15 +3071,38 @@ function drawLeah() {
   ctx.closePath();
   ctx.fill();
   
+  // Dress collar (slightly darker shade, rounded)
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(px - 3, py + 3, 2, 0, Math.PI);
+  ctx.arc(px + 3, py + 3, 2, 0, Math.PI);
+  ctx.fill();
+  // Collar outline
+  ctx.strokeStyle = '#9aa9bd';
+  ctx.lineWidth = 0.5;
+  ctx.beginPath();
+  ctx.moveTo(px - 5, py + 3);
+  ctx.lineTo(px - 1, py + 5);
+  ctx.lineTo(px + 1, py + 5);
+  ctx.lineTo(px + 5, py + 3);
+  ctx.stroke();
+  
+  // School emblem on dress (tiny dark mark)
+  ctx.fillStyle = 'rgba(50, 50, 80, 0.5)';
+  ctx.fillRect(px + 4, py + 8, 3, 2);
+  
+  // Face (skin tone)
   ctx.fillStyle = '#ffe0bd';
   ctx.beginPath();
   ctx.arc(px, py - size/4, size/3, 0, Math.PI * 2);
   ctx.fill();
   
+  // Hair (brown - top of head)
   ctx.fillStyle = '#6b3410';
   ctx.beginPath();
   ctx.arc(px, py - size/3, size/3 + 1, Math.PI, Math.PI * 2);
   ctx.fill();
+  // Pigtails (cute round bunches on each side)
   ctx.beginPath();
   ctx.arc(px - size/3, py - size/5, size/5, 0, Math.PI * 2);
   ctx.fill();
@@ -2987,24 +3110,28 @@ function drawLeah() {
   ctx.arc(px + size/3, py - size/5, size/5, 0, Math.PI * 2);
   ctx.fill();
   
+  // Pink ribbons on pigtails
   ctx.fillStyle = '#ff1493';
   ctx.beginPath();
   ctx.arc(px - size/3, py - size/3, size/8, 0, Math.PI * 2);
   ctx.arc(px + size/3, py - size/3, size/8, 0, Math.PI * 2);
   ctx.fill();
   
+  // Eyes
   ctx.fillStyle = '#000';
   ctx.beginPath();
   ctx.arc(px - size/8, py - size/4, 1.5, 0, Math.PI * 2);
   ctx.arc(px + size/8, py - size/4, 1.5, 0, Math.PI * 2);
   ctx.fill();
   
+  // Smile
   ctx.strokeStyle = '#c2185b';
   ctx.lineWidth = 1.2;
   ctx.beginPath();
   ctx.arc(px, py - size/6, 2, 0, Math.PI);
   ctx.stroke();
   
+  // Lantern (still glows on her side)
   const lanternBob = Math.sin(Date.now() / 200) * 1;
   ctx.fillStyle = '#ffaa00';
   ctx.beginPath();
@@ -3538,10 +3665,10 @@ function drawDaddyCompanion() {
   ctx.ellipse(px, py + size * 0.5, size * 0.28, 3, 0, 0, Math.PI * 2);
   ctx.fill();
   
-  // === BODY ===
-  // Legs (dark blue pants, slight walk swing)
+  // === BODY (WIZARD OUTFIT) ===
+  // Legs (dark pants, slight walk swing)
   const legSwing = isMoving ? Math.sin(Date.now() / 120) * 2 : 0;
-  ctx.strokeStyle = '#2a3d6e';
+  ctx.strokeStyle = '#1a1a2e';
   ctx.lineWidth = 4;
   ctx.lineCap = 'round';
   // Left leg
@@ -3555,49 +3682,77 @@ function drawDaddyCompanion() {
   ctx.lineTo(px + size * 0.18 - legSwing, bodyY + size * 0.5);
   ctx.stroke();
   
-  // Shoes (brown)
-  ctx.fillStyle = '#3d2010';
+  // Shoes (dark)
+  ctx.fillStyle = '#1a1a1a';
   ctx.beginPath();
   ctx.ellipse(px - size * 0.18 + legSwing, bodyY + size * 0.5, 3, 2, 0, 0, Math.PI * 2);
   ctx.ellipse(px + size * 0.18 - legSwing, bodyY + size * 0.5, 3, 2, 0, 0, Math.PI * 2);
   ctx.fill();
   
-  // Torso (blue shirt - tall rectangle)
-  ctx.fillStyle = '#3a6cb0';
+  // Wizard ROBE (deep purple, flowing)
+  ctx.fillStyle = '#4a148c';
   ctx.beginPath();
-  ctx.moveTo(px - size * 0.22, bodyY - size * 0.05);
-  ctx.lineTo(px - size * 0.18, bodyY + size * 0.27);
-  ctx.lineTo(px + size * 0.18, bodyY + size * 0.27);
-  ctx.lineTo(px + size * 0.22, bodyY - size * 0.05);
+  ctx.moveTo(px - size * 0.24, bodyY - size * 0.05);
+  ctx.lineTo(px - size * 0.32, bodyY + size * 0.4);  // wider at bottom (flowing robe)
+  ctx.lineTo(px + size * 0.32, bodyY + size * 0.4);
+  ctx.lineTo(px + size * 0.24, bodyY - size * 0.05);
   ctx.closePath();
   ctx.fill();
   
-  // Shirt highlight
-  ctx.fillStyle = 'rgba(255,255,255,0.15)';
+  // Robe trim/edge highlight (lighter purple)
+  ctx.strokeStyle = '#7e57c2';
+  ctx.lineWidth = 1.5;
   ctx.beginPath();
-  ctx.moveTo(px - size * 0.18, bodyY - size * 0.03);
-  ctx.lineTo(px - size * 0.14, bodyY + size * 0.2);
-  ctx.lineTo(px - size * 0.06, bodyY + size * 0.2);
-  ctx.lineTo(px - size * 0.06, bodyY - size * 0.03);
-  ctx.closePath();
-  ctx.fill();
+  ctx.moveTo(px - size * 0.32, bodyY + size * 0.4);
+  ctx.lineTo(px + size * 0.32, bodyY + size * 0.4);
+  ctx.stroke();
   
-  // Belt
-  ctx.fillStyle = '#1a1a1a';
-  ctx.fillRect(px - size * 0.2, bodyY + size * 0.22, size * 0.4, 2);
-  // Belt buckle
+  // Stars on robe ✨
   ctx.fillStyle = '#ffd700';
-  ctx.fillRect(px - 2, bodyY + size * 0.22, 4, 2);
+  const starPositions = [
+    [-0.12, 0.05], [0.10, 0.10], [-0.08, 0.20], [0.14, 0.25], [-0.16, 0.32]
+  ];
+  starPositions.forEach(([sx, sy]) => {
+    const starX = px + size * sx;
+    const starY = bodyY + size * sy;
+    // Tiny 4-point star
+    ctx.beginPath();
+    ctx.moveTo(starX, starY - 1.5);
+    ctx.lineTo(starX + 0.5, starY - 0.5);
+    ctx.lineTo(starX + 1.5, starY);
+    ctx.lineTo(starX + 0.5, starY + 0.5);
+    ctx.lineTo(starX, starY + 1.5);
+    ctx.lineTo(starX - 0.5, starY + 0.5);
+    ctx.lineTo(starX - 1.5, starY);
+    ctx.lineTo(starX - 0.5, starY - 0.5);
+    ctx.closePath();
+    ctx.fill();
+  });
+  
+  // Robe collar (lighter purple V-neck)
+  ctx.fillStyle = '#7e57c2';
+  ctx.beginPath();
+  ctx.moveTo(px - size * 0.08, bodyY - size * 0.05);
+  ctx.lineTo(px, bodyY + size * 0.05);
+  ctx.lineTo(px + size * 0.08, bodyY - size * 0.05);
+  ctx.closePath();
+  ctx.fill();
+  
+  // Belt (sash with magic glow)
+  ctx.fillStyle = '#ffd700';
+  ctx.fillRect(px - size * 0.24, bodyY + size * 0.18, size * 0.48, 2.5);
+  ctx.fillStyle = '#ffeb3b';
+  ctx.fillRect(px - 1.5, bodyY + size * 0.18, 3, 2.5);
   
   // === ARMS ===
   // Default position: relaxed at sides, but right arm holds wand (raised slightly)
   const wandRaisedHigh = (dc.mode === 'wand' && wandRaise);
   const swordOut = (dc.mode === 'sword' && swordSlash);
   
-  // Left arm (relaxed, swings while walking)
+  // Left arm (relaxed, swings while walking) - wizard robe color
   const armSwing = isMoving ? Math.sin(Date.now() / 120 + Math.PI) * 3 : 0;
-  ctx.strokeStyle = '#3a6cb0';
-  ctx.lineWidth = 3.5;
+  ctx.strokeStyle = '#4a148c';
+  ctx.lineWidth = 4;
   ctx.beginPath();
   ctx.moveTo(px - size * 0.22, bodyY);
   ctx.lineTo(px - size * 0.28 + armSwing * 0.3, bodyY + size * 0.22);
@@ -3625,8 +3780,8 @@ function drawDaddyCompanion() {
   }
   
   // Right arm
-  ctx.strokeStyle = '#3a6cb0';
-  ctx.lineWidth = 3.5;
+  ctx.strokeStyle = '#4a148c';
+  ctx.lineWidth = 4;
   ctx.beginPath();
   ctx.moveTo(px + size * 0.22, bodyY);
   ctx.lineTo(handX, handY);
@@ -3648,7 +3803,7 @@ function drawDaddyCompanion() {
   ctx.arc(px, bodyY - size * 0.22, size * 0.16, 0, Math.PI * 2);
   ctx.fill();
   
-  // Hair (dark brown, short cut)
+  // Hair (dark brown, short cut) - barely visible under hat
   ctx.fillStyle = '#3d2010';
   ctx.beginPath();
   ctx.arc(px, bodyY - size * 0.27, size * 0.17, Math.PI, Math.PI * 2);
@@ -3656,6 +3811,37 @@ function drawDaddyCompanion() {
   // Side hair tufts
   ctx.fillRect(px - size * 0.17, bodyY - size * 0.27, 2, size * 0.1);
   ctx.fillRect(px + size * 0.15, bodyY - size * 0.27, 2, size * 0.1);
+  
+  // === WIZARD HAT (pointed, dark purple with stars) ===
+  ctx.fillStyle = '#311b92';
+  ctx.beginPath();
+  // Hat brim (wide circle)
+  ctx.ellipse(px, bodyY - size * 0.32, size * 0.22, size * 0.05, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Hat cone (pointed up)
+  ctx.beginPath();
+  ctx.moveTo(px - size * 0.18, bodyY - size * 0.32);
+  ctx.lineTo(px + size * 0.18, bodyY - size * 0.32);
+  ctx.lineTo(px + size * 0.04, bodyY - size * 0.65); // tip slightly bent right
+  ctx.closePath();
+  ctx.fill();
+  // Hat band (gold)
+  ctx.fillStyle = '#ffd700';
+  ctx.beginPath();
+  ctx.ellipse(px, bodyY - size * 0.34, size * 0.18, size * 0.03, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Tiny stars on hat
+  ctx.fillStyle = '#ffeb3b';
+  ctx.beginPath();
+  ctx.arc(px - size * 0.05, bodyY - size * 0.45, 1, 0, Math.PI * 2);
+  ctx.arc(px + size * 0.06, bodyY - size * 0.5, 1.2, 0, Math.PI * 2);
+  ctx.arc(px - size * 0.02, bodyY - size * 0.55, 0.8, 0, Math.PI * 2);
+  ctx.fill();
+  // Hat tip - tiny gold star
+  ctx.fillStyle = '#ffd700';
+  ctx.beginPath();
+  ctx.arc(px + size * 0.04, bodyY - size * 0.65, 1.5, 0, Math.PI * 2);
+  ctx.fill();
   
   // Eyebrows (subtle, friendly)
   ctx.strokeStyle = '#2a1810';
@@ -4201,13 +4387,12 @@ function roundRect(ctx, x, y, w, h, r) {
 
 function drawFogOfWar() {
   // Player position on screen (account for zoom)
-  // World coord -> camera offset -> scaled around viewport center
+  // After ctx.scale(zoom) then ctx.translate(-cameraX, -cameraY):
+  //   screenX = (worldX - cameraX) * zoom
   const worldX = player.displayX * CELL_SIZE + CELL_SIZE / 2;
   const worldY = player.displayY * CELL_SIZE + CELL_SIZE / 2;
-  // After translate(VIEW/2,VIEW/2) -> scale -> translate(-VIEW/2,-VIEW/2) -> translate(-cameraX,-cameraY):
-  // screenX = (worldX - cameraX - VIEW_WIDTH/2) * cameraZoom + VIEW_WIDTH/2
-  const px = (worldX - cameraX - VIEW_WIDTH / 2) * cameraZoom + VIEW_WIDTH / 2;
-  const py = (worldY - cameraY - VIEW_HEIGHT / 2) * cameraZoom + VIEW_HEIGHT / 2;
+  const px = (worldX - cameraX) * cameraZoom;
+  const py = (worldY - cameraY) * cameraZoom;
   
   // Effective vision radius - expands during magic, contracts back
   const magicRadius = getMagicLightRadius();
@@ -4232,8 +4417,8 @@ function drawFogOfWar() {
     for (const cell of fullPath) {
       const wcx = cell.x * CELL_SIZE + CELL_SIZE / 2;
       const wcy = cell.y * CELL_SIZE + CELL_SIZE / 2;
-      const cpx = (wcx - cameraX - VIEW_WIDTH / 2) * cameraZoom + VIEW_WIDTH / 2;
-      const cpy = (wcy - cameraY - VIEW_HEIGHT / 2) * cameraZoom + VIEW_HEIGHT / 2;
+      const cpx = (wcx - cameraX) * cameraZoom;
+      const cpy = (wcy - cameraY) * cameraZoom;
       if (cpx < -cellPx || cpx > VIEW_WIDTH + cellPx) continue;
       if (cpy < -cellPx || cpy > VIEW_HEIGHT + cellPx) continue;
       
@@ -4249,8 +4434,8 @@ function drawFogOfWar() {
     for (const cell of fullPath) {
       const wcx = cell.x * CELL_SIZE + CELL_SIZE / 2;
       const wcy = cell.y * CELL_SIZE + CELL_SIZE / 2;
-      const cpx = (wcx - cameraX - VIEW_WIDTH / 2) * cameraZoom + VIEW_WIDTH / 2;
-      const cpy = (wcy - cameraY - VIEW_HEIGHT / 2) * cameraZoom + VIEW_HEIGHT / 2;
+      const cpx = (wcx - cameraX) * cameraZoom;
+      const cpy = (wcy - cameraY) * cameraZoom;
       if (cpx < -cellPx || cpx > VIEW_WIDTH + cellPx) continue;
       if (cpy < -cellPx || cpy > VIEW_HEIGHT + cellPx) continue;
       const goldGrd = ctx.createRadialGradient(cpx, cpy, 0, cpx, cpy, cellPx);
@@ -4612,6 +4797,9 @@ function startEscape() {
   document.getElementById('escapeModal').classList.remove('active');
   gameState = 'escape';
   escapeTimeLeft = 300;
+  
+  // Switch to exciting escape music
+  startEscapeBGM();
   
   escapeTimer = setInterval(() => {
     escapeTimeLeft--;
@@ -5028,20 +5216,51 @@ function drawRainbowHeart() {
     wctx.ellipse(cx, cy + 32*s, 20*s, 4*s, 0, 0, Math.PI * 2);
     wctx.fill();
     
-    // Body (pink dress)
-    wctx.fillStyle = '#ff6b9d';
+    // Body (school uniform light blue/gray dress)
+    wctx.fillStyle = '#b8c5d6';
     wctx.beginPath();
-    wctx.moveTo(cx, cy);
+    wctx.moveTo(cx - 4*s, cy);
     wctx.lineTo(cx - 18*s, cy + 28*s);
     wctx.lineTo(cx + 18*s, cy + 28*s);
+    wctx.lineTo(cx + 4*s, cy);
     wctx.closePath();
     wctx.fill();
     
-    // Dress decoration
-    wctx.fillStyle = '#ff1493';
-    wctx.fillRect(cx - 14*s, cy + 18*s, 28*s, 3*s);
+    // White collar
+    wctx.fillStyle = '#fff';
+    wctx.beginPath();
+    wctx.moveTo(cx - 6*s, cy);
+    wctx.lineTo(cx - 3*s, cy + 4*s);
+    wctx.lineTo(cx, cy + 2*s);
+    wctx.lineTo(cx + 3*s, cy + 4*s);
+    wctx.lineTo(cx + 6*s, cy);
+    wctx.closePath();
+    wctx.fill();
+    // Collar outline
+    wctx.strokeStyle = '#9aa9bd';
+    wctx.lineWidth = 0.7*s;
+    wctx.stroke();
     
-    // Arms (raised slightly to hold heart)
+    // Dress button line down center
+    wctx.strokeStyle = 'rgba(154, 169, 189, 0.5)';
+    wctx.lineWidth = 0.7*s;
+    wctx.beginPath();
+    wctx.moveTo(cx, cy + 5*s);
+    wctx.lineTo(cx, cy + 25*s);
+    wctx.stroke();
+    // Buttons
+    wctx.fillStyle = '#fff';
+    for (let i = 0; i < 3; i++) {
+      wctx.beginPath();
+      wctx.arc(cx, cy + 8*s + i * 6*s, 0.8*s, 0, Math.PI * 2);
+      wctx.fill();
+    }
+    
+    // School emblem (tiny crest on chest)
+    wctx.fillStyle = '#5a6275';
+    wctx.fillRect(cx + 6*s, cy + 7*s, 4*s, 3*s);
+    
+    // Arms (raised slightly to hold reward)
     wctx.strokeStyle = '#ffe0bd';
     wctx.lineWidth = 4*s;
     wctx.lineCap = 'round';
@@ -5058,17 +5277,18 @@ function drawRainbowHeart() {
     wctx.arc(cx, cy - 10*s, 12*s, 0, Math.PI * 2);
     wctx.fill();
     
-    // Hair (brown pigtails)
+    // Hair (brown - top of head)
     wctx.fillStyle = '#6b3410';
     wctx.beginPath();
     wctx.arc(cx, cy - 15*s, 13*s, Math.PI, Math.PI * 2);
     wctx.fill();
+    // Pigtails (round bunches on each side)
     wctx.beginPath();
     wctx.arc(cx - 12*s, cy - 8*s, 7*s, 0, Math.PI * 2);
     wctx.arc(cx + 12*s, cy - 8*s, 7*s, 0, Math.PI * 2);
     wctx.fill();
     
-    // Pink ribbons
+    // Pink ribbons on pigtails
     wctx.fillStyle = '#ff1493';
     wctx.beginPath();
     wctx.arc(cx - 12*s, cy - 14*s, 4*s, 0, Math.PI * 2);
@@ -5115,18 +5335,60 @@ function drawRainbowHeart() {
     wctx.ellipse(cx, cy + 50*s, 28*s, 5*s, 0, 0, Math.PI * 2);
     wctx.fill();
     
-    // Body (purple dress, taller than Leah)
-    wctx.fillStyle = '#9c27b0';
+    // Body (white T-shirt with colorful bear panels - same as in photo!)
+    // Background white shirt
+    wctx.fillStyle = '#fff';
     wctx.beginPath();
-    wctx.moveTo(cx, cy);
-    wctx.lineTo(cx - 24*s, cy + 45*s);
-    wctx.lineTo(cx + 24*s, cy + 45*s);
+    wctx.moveTo(cx - 22*s, cy);
+    wctx.lineTo(cx - 24*s, cy + 30*s);
+    wctx.lineTo(cx + 24*s, cy + 30*s);
+    wctx.lineTo(cx + 22*s, cy);
     wctx.closePath();
     wctx.fill();
     
-    // Dress detail (gold belt)
-    wctx.fillStyle = '#ffd700';
-    wctx.fillRect(cx - 18*s, cy + 22*s, 36*s, 3*s);
+    // Color blocks (4 panels with cartoon bears) - matching family shirt pattern
+    // Top-left: blue panel
+    wctx.fillStyle = '#1976d2';
+    wctx.fillRect(cx - 22*s, cy, 12*s, 15*s);
+    // Top-right: orange panel
+    wctx.fillStyle = '#ff5722';
+    wctx.fillRect(cx + 10*s, cy, 12*s, 15*s);
+    // Bottom-left: green panel  
+    wctx.fillStyle = '#4caf50';
+    wctx.fillRect(cx - 22*s, cy + 15*s, 12*s, 15*s);
+    // Bottom-right: yellow accent
+    wctx.fillStyle = '#fdd835';
+    wctx.fillRect(cx + 10*s, cy + 15*s, 6*s, 8*s);
+    
+    // Tiny bear face hints (black dots for eyes on each panel)
+    wctx.fillStyle = '#1a1a1a';
+    [[-16, 5], [16, 5], [-16, 22]].forEach(([x, y]) => {
+      wctx.beginPath();
+      wctx.arc(cx + x*s - 1.5*s, cy + y*s, 0.7*s, 0, Math.PI * 2);
+      wctx.arc(cx + x*s + 1.5*s, cy + y*s, 0.7*s, 0, Math.PI * 2);
+      wctx.fill();
+    });
+    
+    // Outline around shirt
+    wctx.strokeStyle = '#1a1a1a';
+    wctx.lineWidth = 0.7*s;
+    wctx.beginPath();
+    wctx.moveTo(cx - 22*s, cy);
+    wctx.lineTo(cx - 24*s, cy + 30*s);
+    wctx.lineTo(cx + 24*s, cy + 30*s);
+    wctx.lineTo(cx + 22*s, cy);
+    wctx.closePath();
+    wctx.stroke();
+    
+    // Black shorts below shirt
+    wctx.fillStyle = '#1a1a1a';
+    wctx.beginPath();
+    wctx.moveTo(cx - 18*s, cy + 30*s);
+    wctx.lineTo(cx - 20*s, cy + 45*s);
+    wctx.lineTo(cx + 20*s, cy + 45*s);
+    wctx.lineTo(cx + 18*s, cy + 30*s);
+    wctx.closePath();
+    wctx.fill();
     
     // Arms - either down or open for hug
     wctx.strokeStyle = '#ffe0bd';
@@ -5248,52 +5510,77 @@ function drawRainbowHeart() {
     wctx.ellipse(cx, cy + 50*s, 22*s, 4*s, 0, 0, Math.PI * 2);
     wctx.fill();
     
-    // Legs (dark blue pants)
-    wctx.strokeStyle = '#2a3d6e';
+    // Legs (BLACK pants)
+    wctx.strokeStyle = '#1a1a1a';
     wctx.lineWidth = 5*s;
     wctx.lineCap = 'round';
     wctx.beginPath();
-    wctx.moveTo(cx - 6*s, cy + 22*s);
+    wctx.moveTo(cx - 6*s, cy + 25*s);
     wctx.lineTo(cx - 8*s, cy + 45*s);
-    wctx.moveTo(cx + 6*s, cy + 22*s);
+    wctx.moveTo(cx + 6*s, cy + 25*s);
     wctx.lineTo(cx + 8*s, cy + 45*s);
     wctx.stroke();
     
-    // Shoes (brown)
-    wctx.fillStyle = '#3d2010';
+    // White Crocs shoes
+    wctx.fillStyle = '#f5f5f5';
     wctx.beginPath();
     wctx.ellipse(cx - 8*s, cy + 47*s, 4*s, 2*s, 0, 0, Math.PI * 2);
     wctx.ellipse(cx + 8*s, cy + 47*s, 4*s, 2*s, 0, 0, Math.PI * 2);
     wctx.fill();
     
-    // Torso (blue shirt)
-    wctx.fillStyle = '#3a6cb0';
+    // Torso - WHITE T-SHIRT WITH COLORFUL BEAR PANELS (matching photo!)
+    // Background white shirt
+    wctx.fillStyle = '#fff';
     wctx.beginPath();
     wctx.moveTo(cx - 14*s, cy - 5*s);
-    wctx.lineTo(cx - 10*s, cy + 25*s);
-    wctx.lineTo(cx + 10*s, cy + 25*s);
+    wctx.lineTo(cx - 12*s, cy + 26*s);
+    wctx.lineTo(cx + 12*s, cy + 26*s);
     wctx.lineTo(cx + 14*s, cy - 5*s);
     wctx.closePath();
     wctx.fill();
     
-    // Shirt highlight
-    wctx.fillStyle = 'rgba(255,255,255,0.15)';
+    // Color blocks - matching family bear T-shirt pattern
+    // Top-left: green panel
+    wctx.fillStyle = '#4caf50';
+    wctx.fillRect(cx - 14*s, cy - 5*s, 7*s, 10*s);
+    // Top-right: red/orange panel
+    wctx.fillStyle = '#e53935';
+    wctx.fillRect(cx + 7*s, cy - 5*s, 7*s, 10*s);
+    // Mid-right: orange panel  
+    wctx.fillStyle = '#ff5722';
+    wctx.fillRect(cx + 4*s, cy + 8*s, 10*s, 12*s);
+    // Bottom-left: blue accent
+    wctx.fillStyle = '#1976d2';
+    wctx.fillRect(cx - 14*s, cy + 10*s, 5*s, 8*s);
+    
+    // Tiny bear face hints (black eye dots on each panel)
+    wctx.fillStyle = '#1a1a1a';
+    [[-10, -1], [10, -1], [9, 12]].forEach(([x, y]) => {
+      wctx.beginPath();
+      wctx.arc(cx + x*s - 1.2*s, cy + y*s, 0.6*s, 0, Math.PI * 2);
+      wctx.arc(cx + x*s + 1.2*s, cy + y*s, 0.6*s, 0, Math.PI * 2);
+      wctx.fill();
+    });
+    
+    // Outline around T-shirt
+    wctx.strokeStyle = '#1a1a1a';
+    wctx.lineWidth = 0.7*s;
     wctx.beginPath();
-    wctx.moveTo(cx - 11*s, cy - 3*s);
-    wctx.lineTo(cx - 8*s, cy + 18*s);
-    wctx.lineTo(cx - 3*s, cy + 18*s);
-    wctx.lineTo(cx - 3*s, cy - 3*s);
+    wctx.moveTo(cx - 14*s, cy - 5*s);
+    wctx.lineTo(cx - 12*s, cy + 26*s);
+    wctx.lineTo(cx + 12*s, cy + 26*s);
+    wctx.lineTo(cx + 14*s, cy - 5*s);
     wctx.closePath();
+    wctx.stroke();
+    
+    // Watch (subtle dot on left wrist)
+    wctx.fillStyle = '#1a1a1a';
+    wctx.beginPath();
+    wctx.arc(cx - 17*s, cy + 19*s, 1.5*s, 0, Math.PI * 2);
     wctx.fill();
     
-    // Belt
-    wctx.fillStyle = '#1a1a1a';
-    wctx.fillRect(cx - 12*s, cy + 20*s, 24*s, 3*s);
-    wctx.fillStyle = '#ffd700';
-    wctx.fillRect(cx - 2*s, cy + 20*s, 4*s, 3*s);
-    
-    // Arms - either open for hug or holding wand
-    wctx.strokeStyle = '#3a6cb0';
+    // Arms - either open for hug or holding wand (skin colored sleeves now)
+    wctx.strokeStyle = '#fff';
     wctx.lineWidth = 4.5*s;
     wctx.lineCap = 'round';
     
