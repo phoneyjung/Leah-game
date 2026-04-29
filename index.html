@@ -149,36 +149,46 @@
     display: block;
   }
   
-  .dpad {
+  /* JOYSTICK - virtual analog stick for mobile */
+  .joystick {
     position: fixed;
-    bottom: 30px;
-    left: 30px;
-    display: grid;
-    grid-template-columns: repeat(3, 55px);
-    grid-template-rows: repeat(3, 55px);
-    gap: 4px;
+    bottom: 35px;
+    left: 35px;
+    width: 130px;
+    height: 130px;
     pointer-events: auto;
     opacity: 0.55;
     transition: opacity 0.2s;
-  }
-  .dpad:hover, .dpad:active { opacity: 0.85; }
-  
-  .dpad button {
-    background: rgba(40, 30, 60, 0.7);
-    color: white;
-    border: 2px solid rgba(255, 255, 255, 0.5);
-    border-radius: 12px;
-    font-size: 1.4em;
-    cursor: pointer;
-    box-shadow: 0 3px 8px rgba(0,0,0,0.4);
-    touch-action: manipulation;
-    font-family: inherit;
+    touch-action: none;
     user-select: none;
     -webkit-user-select: none;
   }
-  .dpad button:active {
-    background: rgba(194, 24, 91, 0.9);
-    transform: scale(0.92);
+  .joystick:active, .joystick.dragging { opacity: 0.85; }
+  
+  .joystick-base {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: radial-gradient(circle at center, rgba(40, 30, 60, 0.5), rgba(20, 15, 30, 0.7));
+    border: 3px solid rgba(255, 255, 255, 0.4);
+    box-shadow: 0 3px 12px rgba(0,0,0,0.5), inset 0 0 20px rgba(0,0,0,0.4);
+  }
+  
+  .joystick-stick {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, rgba(200, 200, 220, 0.95), rgba(120, 120, 150, 0.95));
+    border: 2px solid rgba(255, 255, 255, 0.7);
+    box-shadow: 0 3px 8px rgba(0,0,0,0.6), inset 0 -3px 6px rgba(0,0,0,0.3);
+    transform: translate(-50%, -50%);
+    transition: none;
+    pointer-events: none;
   }
   
   .attack-btn {
@@ -210,11 +220,7 @@
   }
   
   /* D-pad layout */
-  .dpad .up { grid-column: 2; grid-row: 1; }
-  .dpad .left { grid-column: 1; grid-row: 2; }
-  .dpad .center { grid-column: 2; grid-row: 2; background: rgba(20, 15, 30, 0.4); pointer-events: none; }
-  .dpad .right { grid-column: 3; grid-row: 2; }
-  .dpad .down { grid-column: 2; grid-row: 3; }
+  /* (D-pad replaced by joystick) */
   
   /* Show on mobile (portrait) */
   @media (max-width: 700px) {
@@ -351,12 +357,11 @@
     
     /* Bigger, brighter controls in fullscreen */
     .mobile-controls { display: block; }
-    .dpad {
-      bottom: 20px;
-      left: 20px;
-      grid-template-columns: repeat(3, 55px);
-      grid-template-rows: repeat(3, 55px);
-      gap: 4px;
+    .joystick {
+      bottom: 25px;
+      left: 25px;
+      width: 130px;
+      height: 130px;
       opacity: 0.55;
     }
     .attack-btn {
@@ -568,12 +573,9 @@
   </div>
   
   <div class="mobile-controls" id="mobileControls">
-    <div class="dpad">
-      <button class="up" ontouchstart="event.preventDefault(); movePlayer(0,-1)" onclick="movePlayer(0,-1)">⬆️</button>
-      <button class="left" ontouchstart="event.preventDefault(); movePlayer(-1,0)" onclick="movePlayer(-1,0)">⬅️</button>
-      <button class="center"></button>
-      <button class="right" ontouchstart="event.preventDefault(); movePlayer(1,0)" onclick="movePlayer(1,0)">➡️</button>
-      <button class="down" ontouchstart="event.preventDefault(); movePlayer(0,1)" onclick="movePlayer(0,1)">⬇️</button>
+    <div class="joystick" id="joystick">
+      <div class="joystick-base"></div>
+      <div class="joystick-stick" id="joystickStick"></div>
     </div>
     <button class="attack-btn" ontouchstart="event.preventDefault(); attackZombie()" onclick="attackZombie()" title="Attack zombie">⚔️</button>
   </div>
@@ -5040,6 +5042,160 @@ canvas.addEventListener('touchend', (e) => {
     if (Math.abs(dy) > 30) movePlayer(0, dy > 0 ? 1 : -1);
   }
 }, {passive: true});
+
+// ==================== VIRTUAL JOYSTICK ====================
+(function setupJoystick() {
+  const joystick = document.getElementById('joystick');
+  const stick = document.getElementById('joystickStick');
+  if (!joystick || !stick) return;
+  
+  let active = false;
+  let activeId = null; // touch identifier
+  let centerX = 0, centerY = 0;
+  let stickX = 0, stickY = 0; // current stick offset (-1 to 1 normalized)
+  const maxRadius = 45; // pixels stick can move from center
+  
+  // Continuous move loop while joystick is held
+  let moveLoopId = null;
+  let lastMoveLoopTime = 0;
+  
+  function updateStickVisual(dx, dy) {
+    // dx, dy are pixels from center
+    const dist = Math.hypot(dx, dy);
+    if (dist > maxRadius) {
+      dx = dx / dist * maxRadius;
+      dy = dy / dist * maxRadius;
+    }
+    stick.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+    
+    // Normalize to -1..1 range for movement direction
+    stickX = dx / maxRadius;
+    stickY = dy / maxRadius;
+  }
+  
+  function resetStick() {
+    stick.style.transform = 'translate(-50%, -50%)';
+    stickX = 0;
+    stickY = 0;
+  }
+  
+  function startMoveLoop() {
+    if (moveLoopId) return;
+    function loop() {
+      const now = Date.now();
+      // Only move if stick is pushed beyond deadzone (0.3)
+      const magnitude = Math.hypot(stickX, stickY);
+      if (active && magnitude > 0.3) {
+        // Pick dominant direction (8-way movement still grid-based)
+        const absX = Math.abs(stickX);
+        const absY = Math.abs(stickY);
+        let dx = 0, dy = 0;
+        // Strict cardinal: choose dominant axis (no diagonal grid moves)
+        if (absX > absY) {
+          dx = stickX > 0 ? 1 : -1;
+        } else {
+          dy = stickY > 0 ? 1 : -1;
+        }
+        // Movement rate scales with magnitude - the more push, the faster
+        // But still limited by PLAYER_MOVE_COOLDOWN_MS
+        movePlayer(dx, dy);
+      }
+      moveLoopId = requestAnimationFrame(loop);
+    }
+    moveLoopId = requestAnimationFrame(loop);
+  }
+  
+  function stopMoveLoop() {
+    if (moveLoopId) {
+      cancelAnimationFrame(moveLoopId);
+      moveLoopId = null;
+    }
+  }
+  
+  function getCenter() {
+    const rect = joystick.getBoundingClientRect();
+    centerX = rect.left + rect.width / 2;
+    centerY = rect.top + rect.height / 2;
+  }
+  
+  // Touch events
+  joystick.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    if (active) return;
+    const touch = e.changedTouches[0];
+    activeId = touch.identifier;
+    active = true;
+    joystick.classList.add('dragging');
+    getCenter();
+    const dx = touch.clientX - centerX;
+    const dy = touch.clientY - centerY;
+    updateStickVisual(dx, dy);
+    startMoveLoop();
+  }, {passive: false});
+  
+  joystick.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    if (!active) return;
+    // Find our touch
+    let touch = null;
+    for (let i = 0; i < e.touches.length; i++) {
+      if (e.touches[i].identifier === activeId) {
+        touch = e.touches[i];
+        break;
+      }
+    }
+    if (!touch) return;
+    const dx = touch.clientX - centerX;
+    const dy = touch.clientY - centerY;
+    updateStickVisual(dx, dy);
+  }, {passive: false});
+  
+  function endTouch(e) {
+    if (!active) return;
+    // Check if our touch ended
+    let stillActive = false;
+    for (let i = 0; i < e.touches.length; i++) {
+      if (e.touches[i].identifier === activeId) {
+        stillActive = true;
+        break;
+      }
+    }
+    if (!stillActive) {
+      active = false;
+      activeId = null;
+      joystick.classList.remove('dragging');
+      resetStick();
+      stopMoveLoop();
+    }
+  }
+  
+  joystick.addEventListener('touchend', (e) => { e.preventDefault(); endTouch(e); }, {passive: false});
+  joystick.addEventListener('touchcancel', (e) => { e.preventDefault(); endTouch(e); }, {passive: false});
+  
+  // Mouse events for desktop testing (optional - keyboard still preferred)
+  let mouseDown = false;
+  joystick.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    mouseDown = true;
+    active = true;
+    joystick.classList.add('dragging');
+    getCenter();
+    updateStickVisual(e.clientX - centerX, e.clientY - centerY);
+    startMoveLoop();
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (!mouseDown || !active) return;
+    updateStickVisual(e.clientX - centerX, e.clientY - centerY);
+  });
+  document.addEventListener('mouseup', () => {
+    if (!mouseDown) return;
+    mouseDown = false;
+    active = false;
+    joystick.classList.remove('dragging');
+    resetStick();
+    stopMoveLoop();
+  });
+})();
 
 // ==================== INIT ====================
 function restartGame() {
