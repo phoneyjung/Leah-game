@@ -551,8 +551,8 @@
   <div class="subtitle" id="gameSubtitle">Help Leah collect 10 gems to make a Rainbow Heart for Mommy Pang! 🌈</div>
   
   <div class="info-bar">
-    <div class="info-item" id="leahLabel">👧 Leah</div>
-    <div class="info-item"><span id="gemsLabel">💎 Gems:</span> <span id="gemCount">0</span>/10</div>
+    <div class="info-item" id="leahLabel">🎯 <span id="levelLabel">Lv 1</span></div>
+    <div class="info-item"><span id="gemsLabel">💎</span> <span id="gemCount">0</span>/10</div>
     <div class="info-item">⏰ <span id="timer">--:--</span></div>
     <button id="muteBtn" onclick="toggleMute()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1.1em; cursor:pointer;" title="Mute/Unmute">🔊</button>
     <button id="fullscreenBtn" onclick="toggleFullscreen()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="Fullscreen">⛶</button>
@@ -620,6 +620,7 @@
   </div>
 </div>
 
+
 <!-- Question Modal -->
 <div class="modal" id="questionModal">
   <div class="modal-content">
@@ -648,7 +649,7 @@
     <p style="font-size: 1.1em;" id="winSub">Watch the gems become a Rainbow Heart for Mommy Pang...</p>
     <canvas id="winCanvas" width="400" height="320"></canvas>
     <p id="winMessage" style="font-size: 1.2em; color: #c2185b; font-weight: bold;"></p>
-    <button class="continue-btn" id="winPlayAgain" onclick="restartGame()">🔄 Play Again</button>
+    <button class="continue-btn" id="winPlayAgain" onclick="nextLevel()">▶️ Next Level</button>
   </div>
 </div>
 
@@ -664,14 +665,21 @@
 
 <script>
 // ==================== GAME CONFIG ====================
-const COLS = 35;
-const ROWS = 25;
+// Level system - sizes are: Level 1 (50%), Level 2 (75%), Level 3 (100%)
+let currentLevel = 1; // 1, 2, or 3
+const LEVEL_SIZES = {
+  1: { cols: 17, rows: 13, collectible: 'gem' },     // 50% size, collect gems
+  2: { cols: 26, rows: 19, collectible: 'cloth' },   // 75% size, collect cloth pieces
+  3: { cols: 35, rows: 25, collectible: 'star' }     // 100% size, collect stars
+};
+let COLS = LEVEL_SIZES[1].cols;
+let ROWS = LEVEL_SIZES[1].rows;
 const CELL_SIZE = 44;  // Bigger cells for better visibility on mobile
 let VIEW_WIDTH = 800;  // Will be set dynamically based on canvas size
 let VIEW_HEIGHT = 600; // Will be set dynamically based on canvas size
 const VISION_RADIUS = 4.5; // Slightly larger so player sees more around them
 const HELP_COOLDOWN = 120; // 2 minutes
-const HELP_DURATION = 3; // 3 seconds of full vision
+const HELP_DURATION = 10; // 10 seconds of full vision
 const RESCUE_THRESHOLD = 90; // Daddy Phone rescues at 90s left
 
 const canvas = document.getElementById('gameCanvas');
@@ -1217,8 +1225,8 @@ function t(key) { return I18N[currentLang][key] || I18N.en[key] || key; }
 function applyLanguage() {
   document.getElementById('gameTitle').innerHTML = t('title');
   document.getElementById('gameSubtitle').innerHTML = t('subtitle');
-  document.getElementById('leahLabel').textContent = t('leah');
-  document.getElementById('gemsLabel').textContent = t('gems') + ':';
+  // leahLabel now shows level - updated by updateUI()
+  document.getElementById('gemsLabel').textContent = '';
   document.getElementById('controlsLine1').innerHTML = t('controls1');
   document.getElementById('controlsLine2').innerHTML = t('controls2');
   document.getElementById('controlsLine3').innerHTML = t('controls3');
@@ -1982,6 +1990,9 @@ refillQuestionPool();
 // Help system
 let helpCooldownTimer = 0; // 0 = ready, > 0 = cooldown remaining
 let magicLightTimer = 0; // > 0 = cave is fully lit
+let magicLightStartTime = 0; // when the magic was activated (for expansion calc)
+const MAGIC_EXPAND_DURATION = 1.5; // seconds to expand
+const MAGIC_CONTRACT_DURATION = 1.5; // seconds to contract
 let helpInterval = null;
 
 // Daddy Phone rescue system
@@ -2321,6 +2332,35 @@ function handleZombieCollision(zombie) {
   }
 }
 
+// Calculate the current magic light radius (in cells) based on elapsed time
+// Returns 0 when not active, expands from VISION_RADIUS up to fully covering the screen, then contracts back
+function getMagicLightRadius() {
+  if (magicLightTimer <= 0) return 0;
+  
+  const elapsed = HELP_DURATION - magicLightTimer; // time since activation
+  const remaining = magicLightTimer; // time left
+  
+  // Maximum radius needed to cover the whole visible area + a bit extra
+  // (so the light feels "full" even at edges of the camera)
+  const maxRadius = Math.max(COLS, ROWS) * 1.2;
+  const startRadius = VISION_RADIUS; // begin from Leah's lantern range
+  
+  if (elapsed < MAGIC_EXPAND_DURATION) {
+    // Expanding phase - smooth ease out
+    const t = elapsed / MAGIC_EXPAND_DURATION;
+    const ease = 1 - Math.pow(1 - t, 2); // ease-out quadratic
+    return startRadius + (maxRadius - startRadius) * ease;
+  } else if (remaining < MAGIC_CONTRACT_DURATION) {
+    // Contracting phase - smooth ease in
+    const t = 1 - (remaining / MAGIC_CONTRACT_DURATION);
+    const ease = t * t; // ease-in quadratic
+    return maxRadius - (maxRadius - startRadius) * ease;
+  } else {
+    // Hold full size
+    return maxRadius;
+  }
+}
+
 // ==================== HELP SYSTEM ====================
 function useDaddyPhoneHelp() {
   if (gameState !== 'playing' && gameState !== 'escape') return;
@@ -2329,13 +2369,14 @@ function useDaddyPhoneHelp() {
   
   // Activate magic light
   magicLightTimer = HELP_DURATION;
+  magicLightStartTime = Date.now() / 1000;
   helpCooldownTimer = HELP_COOLDOWN;
   
   sfxMagic();
   
-  // Daddy Phone raises his wand
+  // Daddy Phone raises his wand for the full magic duration
   if (daddyCompanion) daddyCompanion.mode = 'wand';
-  wandRaise = { frames: 0 };
+  wandRaise = { frames: 0, persistent: true };
   
   // Visual flash
   const flash = document.createElement('div');
@@ -2353,7 +2394,16 @@ function useDaddyPhoneHelp() {
     helpInterval = setInterval(() => {
       if (magicLightTimer > 0) {
         magicLightTimer -= 0.1;
-        if (magicLightTimer < 0) magicLightTimer = 0;
+        if (magicLightTimer <= 0) {
+          magicLightTimer = 0;
+          // Magic ended - lower the wand (unless rescue is active)
+          if (!rescueActive) {
+            wandRaise = null;
+            if (daddyCompanion && daddyCompanion.mode === 'wand') {
+              daddyCompanion.mode = 'follow';
+            }
+          }
+        }
       }
       if (helpCooldownTimer > 0) {
         helpCooldownTimer -= 0.1;
@@ -2579,15 +2629,78 @@ function drawGoldenPath() {
 }
 
 // ==================== RENDERING ====================
+// === CAMERA ZOOM (linked to magic light) ===
+let cameraZoom = 1.0; // current zoom level (1.0 = normal, 0.4 = zoomed out to see whole map)
+
+function getTargetZoom() {
+  if (magicLightTimer <= 0) return 1.0;
+  
+  const elapsed = HELP_DURATION - magicLightTimer;
+  const remaining = magicLightTimer;
+  
+  // Use the LARGER fit so the screen is filled tightly
+  // (the maze may extend slightly beyond view in the long dimension, but no empty bars)
+  const fitX = VIEW_WIDTH / (COLS * CELL_SIZE);
+  const fitY = VIEW_HEIGHT / (ROWS * CELL_SIZE);
+  // Use max so screen fills tightly; clamp to reasonable values
+  const fitZoom = Math.max(fitX, fitY) * 0.95;
+  const minZoom = Math.max(0.4, Math.min(0.7, fitZoom));
+  
+  if (elapsed < MAGIC_EXPAND_DURATION) {
+    const t = elapsed / MAGIC_EXPAND_DURATION;
+    const ease = 1 - Math.pow(1 - t, 3);
+    return 1.0 + (minZoom - 1.0) * ease;
+  } else if (remaining < MAGIC_CONTRACT_DURATION) {
+    const t = 1 - (remaining / MAGIC_CONTRACT_DURATION);
+    const ease = t * t * t;
+    return minZoom + (1.0 - minZoom) * ease;
+  } else {
+    return minZoom;
+  }
+}
+
 function updateCamera() {
-  const targetX = player.displayX * CELL_SIZE - VIEW_WIDTH / 2 + CELL_SIZE / 2;
-  const targetY = player.displayY * CELL_SIZE - VIEW_HEIGHT / 2 + CELL_SIZE / 2;
+  // Smoothly interpolate zoom toward target
+  const targetZoom = getTargetZoom();
+  cameraZoom += (targetZoom - cameraZoom) * 0.12;
+  
+  // When zoomed out, keep camera centered on the maze midpoint instead of just Leah
+  // This prevents the camera from clamping awkwardly at the edges when fully zoomed out
+  const effectiveViewW = VIEW_WIDTH / cameraZoom;
+  const effectiveViewH = VIEW_HEIGHT / cameraZoom;
+  
+  // Blend between Leah-centered (zoom=1) and maze-centered (zoom<1)
+  const zoomBlend = (1.0 - cameraZoom) / (1.0 - 0.35); // 0 at normal, 1 at max zoom out
+  const blendT = Math.max(0, Math.min(1, zoomBlend));
+  
+  const leahTargetX = player.displayX * CELL_SIZE - effectiveViewW / 2 + CELL_SIZE / 2;
+  const leahTargetY = player.displayY * CELL_SIZE - effectiveViewH / 2 + CELL_SIZE / 2;
+  
+  const mazeCenterX = (COLS * CELL_SIZE) / 2 - effectiveViewW / 2;
+  const mazeCenterY = (ROWS * CELL_SIZE) / 2 - effectiveViewH / 2;
+  
+  const targetX = leahTargetX + (mazeCenterX - leahTargetX) * blendT;
+  const targetY = leahTargetY + (mazeCenterY - leahTargetY) * blendT;
   
   cameraX += (targetX - cameraX) * 0.15;
   cameraY += (targetY - cameraY) * 0.15;
   
-  cameraX = Math.max(0, Math.min(COLS * CELL_SIZE - VIEW_WIDTH, cameraX));
-  cameraY = Math.max(0, Math.min(ROWS * CELL_SIZE - VIEW_HEIGHT, cameraY));
+  // Clamp camera based on effective view (zoomed-out view sees more)
+  const minCamX = -((effectiveViewW - COLS * CELL_SIZE) / 2);
+  const minCamY = -((effectiveViewH - ROWS * CELL_SIZE) / 2);
+  
+  if (effectiveViewW >= COLS * CELL_SIZE) {
+    // Map fits horizontally - center it
+    cameraX = -(effectiveViewW - COLS * CELL_SIZE) / 2;
+  } else {
+    cameraX = Math.max(0, Math.min(COLS * CELL_SIZE - effectiveViewW, cameraX));
+  }
+  
+  if (effectiveViewH >= ROWS * CELL_SIZE) {
+    cameraY = -(effectiveViewH - ROWS * CELL_SIZE) / 2;
+  } else {
+    cameraY = Math.max(0, Math.min(ROWS * CELL_SIZE - effectiveViewH, cameraY));
+  }
 }
 
 function draw() {
@@ -2624,21 +2737,42 @@ function draw() {
   }
   
   ctx.save();
+  // Apply zoom: scale around viewport center
+  ctx.translate(VIEW_WIDTH / 2, VIEW_HEIGHT / 2);
+  ctx.scale(cameraZoom, cameraZoom);
+  ctx.translate(-VIEW_WIDTH / 2, -VIEW_HEIGHT / 2);
+  // Then translate to camera position
   ctx.translate(-cameraX + shakeX, -cameraY + shakeY);
   
+  // Calculate visible area accounting for zoom (effective view is larger when zoomed out)
+  const effectiveViewW = VIEW_WIDTH / cameraZoom;
+  const effectiveViewH = VIEW_HEIGHT / cameraZoom;
   const startCol = Math.max(0, Math.floor(cameraX / CELL_SIZE) - 1);
-  const endCol = Math.min(COLS, Math.ceil((cameraX + VIEW_WIDTH) / CELL_SIZE) + 1);
+  const endCol = Math.min(COLS, Math.ceil((cameraX + effectiveViewW) / CELL_SIZE) + 1);
   const startRow = Math.max(0, Math.floor(cameraY / CELL_SIZE) - 1);
-  const endRow = Math.min(ROWS, Math.ceil((cameraY + VIEW_HEIGHT) / CELL_SIZE) + 1);
+  const endRow = Math.min(ROWS, Math.ceil((cameraY + effectiveViewH) / CELL_SIZE) + 1);
   
   ctx.fillStyle = '#000';
-  ctx.fillRect(cameraX, cameraY, VIEW_WIDTH, VIEW_HEIGHT);
+  ctx.fillRect(cameraX, cameraY, effectiveViewW, effectiveViewH);
   
-  // During magic light, render whole map
-  const renderStartCol = magicLightTimer > 0 ? 0 : startCol;
-  const renderEndCol = magicLightTimer > 0 ? COLS : endCol;
-  const renderStartRow = magicLightTimer > 0 ? 0 : startRow;
-  const renderEndRow = magicLightTimer > 0 ? ROWS : endRow;
+  // Magic light render area - expands/contracts with the magic radius
+  const magicRadius = getMagicLightRadius();
+  let renderStartCol = startCol, renderEndCol = endCol;
+  let renderStartRow = startRow, renderEndRow = endRow;
+  if (magicRadius > 0) {
+    // Render cells within magic radius around Leah
+    const px = player.displayX;
+    const py = player.displayY;
+    renderStartCol = Math.max(0, Math.floor(px - magicRadius));
+    renderEndCol = Math.min(COLS, Math.ceil(px + magicRadius));
+    renderStartRow = Math.max(0, Math.floor(py - magicRadius));
+    renderEndRow = Math.min(ROWS, Math.ceil(py + magicRadius));
+    // Always include the camera-visible area too
+    renderStartCol = Math.min(renderStartCol, startCol);
+    renderEndCol = Math.max(renderEndCol, endCol);
+    renderStartRow = Math.min(renderStartRow, startRow);
+    renderEndRow = Math.max(renderEndRow, endRow);
+  }
   
   for (let y = renderStartRow; y < renderEndRow; y++) {
     for (let x = renderStartCol; x < renderEndCol; x++) {
@@ -2730,7 +2864,7 @@ function draw() {
       if (cell === 2) {
         const qPos = questionPositions.find(q => q.x === x && q.y === y);
         if (qPos && !qPos.answered) {
-          drawDiamondGem(px + CELL_SIZE/2, py + CELL_SIZE/2, x + y);
+          drawCollectible(px + CELL_SIZE/2, py + CELL_SIZE/2, x + y);
         }
       }
       
@@ -2801,10 +2935,12 @@ function draw() {
   
   ctx.restore();
   
-  // Fog of war (only if magic not active)
-  if (magicLightTimer <= 0) {
-    drawFogOfWar();
-  } else {
+  // Fog of war - radius expands during magic
+  // Always draw fog (radius will be huge during magic, hiding the dark edges)
+  drawFogOfWar();
+  
+  // Add magic shimmer overlay when active
+  if (magicLightTimer > 0) {
     drawMagicLightEffect();
   }
   
@@ -2889,6 +3025,136 @@ function drawLeah() {
     ctx.stroke();
     ctx.globalAlpha = 1;
   }
+}
+
+function drawCollectible(cx, cy, seed) {
+  const type = LEVEL_SIZES[currentLevel].collectible;
+  if (type === 'gem') drawDiamondGem(cx, cy, seed);
+  else if (type === 'cloth') drawClothPiece(cx, cy, seed);
+  else if (type === 'star') drawStarCollectible(cx, cy, seed);
+}
+
+function drawClothPiece(cx, cy, seed) {
+  // Colorful striped fabric piece (looks like the rainbow striped Thai-style cloth)
+  const time = Date.now() / 200;
+  const float = Math.sin(time + seed) * 2;
+  const px = cx;
+  const py = cy + float;
+  const size = CELL_SIZE * 0.32;
+  
+  // Glow
+  const glowGrad = ctx.createRadialGradient(px, py, 0, px, py, size * 1.5);
+  glowGrad.addColorStop(0, 'rgba(100, 150, 255, 0.4)');
+  glowGrad.addColorStop(1, 'rgba(100, 150, 255, 0)');
+  ctx.fillStyle = glowGrad;
+  ctx.fillRect(px - size * 1.5, py - size * 1.5, size * 3, size * 3);
+  
+  // Folded cloth - draw as rectangle with wave
+  ctx.save();
+  ctx.translate(px, py);
+  ctx.rotate(Math.sin(time * 0.5 + seed) * 0.1);
+  
+  const w = size * 1.2;
+  const h = size * 1.4;
+  
+  // Background blue
+  ctx.fillStyle = '#1976d2';
+  ctx.fillRect(-w/2, -h/2, w, h);
+  
+  // Vertical stripes - rainbow colors
+  const stripes = ['#ff4444', '#ff9800', '#ffd700', '#4caf50', '#fff', '#ff4444', '#ff9800', '#ffd700'];
+  const stripeW = w / stripes.length;
+  for (let i = 0; i < stripes.length; i++) {
+    if (i % 3 === 0) continue; // some stripes are the blue background
+    ctx.fillStyle = stripes[i];
+    ctx.fillRect(-w/2 + i * stripeW, -h/2, stripeW * 0.3, h);
+  }
+  
+  // Fold shadow
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+  ctx.fillRect(-w/2, -2, w, 4);
+  
+  // Highlight shine
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+  ctx.fillRect(-w/2 + 2, -h/2 + 2, w * 0.15, h * 0.4);
+  
+  ctx.restore();
+  
+  // Sparkles
+  const sparkleAngle = time + seed;
+  for (let i = 0; i < 2; i++) {
+    const a = sparkleAngle + i * Math.PI;
+    const sx = px + Math.cos(a) * size * 1.2;
+    const sy = py + Math.sin(a) * size * 1.2;
+    ctx.fillStyle = `rgba(255, 255, 255, ${0.5 + Math.sin(time + i) * 0.3})`;
+    ctx.beginPath();
+    ctx.arc(sx, sy, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawStarCollectible(cx, cy, seed) {
+  const time = Date.now() / 200;
+  const float = Math.sin(time + seed) * 2;
+  const px = cx;
+  const py = cy + float;
+  const size = CELL_SIZE * 0.35;
+  
+  // Big golden glow
+  const glowGrad = ctx.createRadialGradient(px, py, 0, px, py, size * 2);
+  glowGrad.addColorStop(0, 'rgba(255, 220, 0, 0.6)');
+  glowGrad.addColorStop(0.5, 'rgba(255, 200, 50, 0.3)');
+  glowGrad.addColorStop(1, 'rgba(255, 215, 0, 0)');
+  ctx.fillStyle = glowGrad;
+  ctx.fillRect(px - size * 2, py - size * 2, size * 4, size * 4);
+  
+  // Spinning star
+  ctx.save();
+  ctx.translate(px, py);
+  ctx.rotate(time * 0.3 + seed);
+  
+  const pulse = (Math.sin(time * 2 + seed) + 1) / 2;
+  const r1 = size * (1 + pulse * 0.1);
+  const r2 = r1 * 0.4;
+  
+  // Outer star (white core)
+  ctx.fillStyle = '#fff';
+  ctx.shadowColor = '#ffd700';
+  ctx.shadowBlur = 15;
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2 - Math.PI / 2;
+    const r = i % 2 === 0 ? r1 : r2;
+    const x = Math.cos(a) * r;
+    const y = Math.sin(a) * r;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  
+  // Inner gold star
+  ctx.fillStyle = '#ffd700';
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2 - Math.PI / 2;
+    const r = i % 2 === 0 ? r1 * 0.7 : r2 * 0.7;
+    const x = Math.cos(a) * r;
+    const y = Math.sin(a) * r;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.fill();
+  
+  // Center dot
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(0, 0, 2, 0, Math.PI * 2);
+  ctx.fill();
+  
+  ctx.restore();
 }
 
 function drawDiamondGem(cx, cy, seed) {
@@ -3934,10 +4200,22 @@ function roundRect(ctx, x, y, w, h, r) {
 }
 
 function drawFogOfWar() {
-  const px = player.displayX * CELL_SIZE - cameraX + CELL_SIZE / 2;
-  const py = player.displayY * CELL_SIZE - cameraY + CELL_SIZE / 2;
+  // Player position on screen (account for zoom)
+  // World coord -> camera offset -> scaled around viewport center
+  const worldX = player.displayX * CELL_SIZE + CELL_SIZE / 2;
+  const worldY = player.displayY * CELL_SIZE + CELL_SIZE / 2;
+  // After translate(VIEW/2,VIEW/2) -> scale -> translate(-VIEW/2,-VIEW/2) -> translate(-cameraX,-cameraY):
+  // screenX = (worldX - cameraX - VIEW_WIDTH/2) * cameraZoom + VIEW_WIDTH/2
+  const px = (worldX - cameraX - VIEW_WIDTH / 2) * cameraZoom + VIEW_WIDTH / 2;
+  const py = (worldY - cameraY - VIEW_HEIGHT / 2) * cameraZoom + VIEW_HEIGHT / 2;
   
-  const grd = ctx.createRadialGradient(px, py, CELL_SIZE * 0.5, px, py, CELL_SIZE * VISION_RADIUS);
+  // Effective vision radius - expands during magic, contracts back
+  const magicRadius = getMagicLightRadius();
+  const effectiveRadius = Math.max(VISION_RADIUS, magicRadius);
+  // Scale radius by zoom too (so cells appear correctly sized)
+  const radiusPx = CELL_SIZE * effectiveRadius * cameraZoom;
+  
+  const grd = ctx.createRadialGradient(px, py, CELL_SIZE * 0.5 * cameraZoom, px, py, radiusPx);
   grd.addColorStop(0, 'rgba(0, 0, 0, 0)');
   grd.addColorStop(0.5, 'rgba(0, 0, 0, 0.2)');
   grd.addColorStop(0.85, 'rgba(0, 0, 0, 0.85)');
@@ -3950,32 +4228,36 @@ function drawFogOfWar() {
   if (rescueActive && daddyPhone && daddyPhone.path) {
     ctx.globalCompositeOperation = 'destination-out';
     const fullPath = [{x: player.x, y: player.y}, ...daddyPhone.path];
+    const cellPx = CELL_SIZE * cameraZoom;
     for (const cell of fullPath) {
-      const cpx = cell.x * CELL_SIZE - cameraX + CELL_SIZE / 2;
-      const cpy = cell.y * CELL_SIZE - cameraY + CELL_SIZE / 2;
-      // Skip if off-screen
-      if (cpx < -CELL_SIZE || cpx > VIEW_WIDTH + CELL_SIZE) continue;
-      if (cpy < -CELL_SIZE || cpy > VIEW_HEIGHT + CELL_SIZE) continue;
+      const wcx = cell.x * CELL_SIZE + CELL_SIZE / 2;
+      const wcy = cell.y * CELL_SIZE + CELL_SIZE / 2;
+      const cpx = (wcx - cameraX - VIEW_WIDTH / 2) * cameraZoom + VIEW_WIDTH / 2;
+      const cpy = (wcy - cameraY - VIEW_HEIGHT / 2) * cameraZoom + VIEW_HEIGHT / 2;
+      if (cpx < -cellPx || cpx > VIEW_WIDTH + cellPx) continue;
+      if (cpy < -cellPx || cpy > VIEW_HEIGHT + cellPx) continue;
       
-      const cellGrd = ctx.createRadialGradient(cpx, cpy, 0, cpx, cpy, CELL_SIZE * 1.2);
+      const cellGrd = ctx.createRadialGradient(cpx, cpy, 0, cpx, cpy, cellPx * 1.2);
       cellGrd.addColorStop(0, 'rgba(0, 0, 0, 0.7)');
       cellGrd.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = cellGrd;
-      ctx.fillRect(cpx - CELL_SIZE * 1.2, cpy - CELL_SIZE * 1.2, CELL_SIZE * 2.4, CELL_SIZE * 2.4);
+      ctx.fillRect(cpx - cellPx * 1.2, cpy - cellPx * 1.2, cellPx * 2.4, cellPx * 2.4);
     }
     ctx.globalCompositeOperation = 'source-over';
     
     // Subtle gold tint on path through fog
     for (const cell of fullPath) {
-      const cpx = cell.x * CELL_SIZE - cameraX + CELL_SIZE / 2;
-      const cpy = cell.y * CELL_SIZE - cameraY + CELL_SIZE / 2;
-      if (cpx < -CELL_SIZE || cpx > VIEW_WIDTH + CELL_SIZE) continue;
-      if (cpy < -CELL_SIZE || cpy > VIEW_HEIGHT + CELL_SIZE) continue;
-      const goldGrd = ctx.createRadialGradient(cpx, cpy, 0, cpx, cpy, CELL_SIZE);
+      const wcx = cell.x * CELL_SIZE + CELL_SIZE / 2;
+      const wcy = cell.y * CELL_SIZE + CELL_SIZE / 2;
+      const cpx = (wcx - cameraX - VIEW_WIDTH / 2) * cameraZoom + VIEW_WIDTH / 2;
+      const cpy = (wcy - cameraY - VIEW_HEIGHT / 2) * cameraZoom + VIEW_HEIGHT / 2;
+      if (cpx < -cellPx || cpx > VIEW_WIDTH + cellPx) continue;
+      if (cpy < -cellPx || cpy > VIEW_HEIGHT + cellPx) continue;
+      const goldGrd = ctx.createRadialGradient(cpx, cpy, 0, cpx, cpy, cellPx);
       goldGrd.addColorStop(0, 'rgba(255, 215, 0, 0.08)');
       goldGrd.addColorStop(1, 'rgba(255, 215, 0, 0)');
       ctx.fillStyle = goldGrd;
-      ctx.fillRect(cpx - CELL_SIZE, cpy - CELL_SIZE, CELL_SIZE * 2, CELL_SIZE * 2);
+      ctx.fillRect(cpx - cellPx, cpy - cellPx, cellPx * 2, cellPx * 2);
     }
   }
   
@@ -3994,40 +4276,51 @@ function drawFogOfWar() {
 }
 
 function drawMagicLightEffect() {
-  const intensity = Math.min(1, magicLightTimer / HELP_DURATION);
+  // Calculate phase intensity - peaks during expand phase, gentle during hold
+  const elapsed = HELP_DURATION - magicLightTimer;
+  const remaining = magicLightTimer;
   
-  // If wand is being raised, draw an expanding glow from Daddy Phone
-  if (wandRaise && daddyCompanion) {
-    const dpx = daddyCompanion.displayX * CELL_SIZE - cameraX + CELL_SIZE / 2;
-    const dpy = daddyCompanion.displayY * CELL_SIZE - cameraY + CELL_SIZE / 2;
-    
-    // Wand tip is above daddy's head
-    const wandTipX = dpx;
-    const wandTipY = dpy - CELL_SIZE * 0.6;
-    
-    // Expansion: 0 → 1 over first 30 frames
-    const expand = Math.min(1, wandRaise.frames / 25);
-    const radius = expand * VIEW_WIDTH * 1.2;
-    
-    // Bright burst from wand tip
-    const burstGrad = ctx.createRadialGradient(wandTipX, wandTipY, 0, wandTipX, wandTipY, radius);
-    burstGrad.addColorStop(0, `rgba(255, 255, 220, ${0.5 * (1 - expand * 0.7)})`);
-    burstGrad.addColorStop(0.3, `rgba(180, 220, 255, ${0.25 * (1 - expand * 0.5)})`);
+  // Burst intensity is strong during expand, gentle in hold, fades during contract
+  let burstIntensity = 0;
+  if (elapsed < MAGIC_EXPAND_DURATION) {
+    burstIntensity = 1 - (elapsed / MAGIC_EXPAND_DURATION); // fades as it expands
+  } else if (remaining < MAGIC_CONTRACT_DURATION) {
+    burstIntensity = 1 - (remaining / MAGIC_CONTRACT_DURATION); // grows as it contracts
+  } else {
+    burstIntensity = 0.15; // gentle hold
+  }
+  
+  const overlayIntensity = magicLightTimer > MAGIC_CONTRACT_DURATION 
+    ? Math.min(1, elapsed / MAGIC_EXPAND_DURATION) 
+    : Math.min(1, remaining / MAGIC_CONTRACT_DURATION);
+  
+  // Expanding glow centered on Leah (since the light radius spreads from her)
+  const lpx = player.displayX * CELL_SIZE - cameraX + CELL_SIZE / 2;
+  const lpy = player.displayY * CELL_SIZE - cameraY + CELL_SIZE / 2;
+  const magicRadius = getMagicLightRadius();
+  
+  if (magicRadius > 0 && burstIntensity > 0.05) {
+    // Bright burst from Leah's position - matches the actual magic radius
+    const radiusPx = magicRadius * CELL_SIZE;
+    const burstGrad = ctx.createRadialGradient(lpx, lpy, 0, lpx, lpy, radiusPx * 0.8);
+    burstGrad.addColorStop(0, `rgba(255, 255, 220, ${0.3 * burstIntensity})`);
+    burstGrad.addColorStop(0.5, `rgba(180, 220, 255, ${0.15 * burstIntensity})`);
     burstGrad.addColorStop(1, 'rgba(100, 200, 255, 0)');
     ctx.fillStyle = burstGrad;
     ctx.fillRect(0, 0, VIEW_WIDTH, VIEW_HEIGHT);
   }
   
-  // Soft blue overlay during sustained magic light (after expansion)
-  ctx.fillStyle = `rgba(100, 200, 255, ${0.05 * intensity})`;
+  // Soft blue overlay during sustained magic light
+  ctx.fillStyle = `rgba(100, 200, 255, ${0.04 * overlayIntensity})`;
   ctx.fillRect(0, 0, VIEW_WIDTH, VIEW_HEIGHT);
   
   // Pulsing magic sparkles overlay
   const time = Date.now() / 100;
-  for (let i = 0; i < 30; i++) {
+  const sparkleCount = Math.floor(30 * overlayIntensity);
+  for (let i = 0; i < sparkleCount; i++) {
     const sx = (i * 173 + time * 0.5) % VIEW_WIDTH;
     const sy = (i * 97 + Math.sin(time / 50 + i) * 20) % VIEW_HEIGHT;
-    const alpha = (Math.sin(time / 30 + i) + 1) / 2 * intensity * 0.6;
+    const alpha = (Math.sin(time / 30 + i) + 1) / 2 * overlayIntensity * 0.5;
     ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
     ctx.beginPath();
     ctx.arc(sx, sy, 1.5, 0, Math.PI * 2);
@@ -4035,7 +4328,7 @@ function drawMagicLightEffect() {
   }
   
   // Border flash effect
-  ctx.strokeStyle = `rgba(100, 200, 255, ${intensity * 0.6})`;
+  ctx.strokeStyle = `rgba(100, 200, 255, ${overlayIntensity * 0.5})`;
   ctx.lineWidth = 8;
   ctx.strokeRect(4, 4, VIEW_WIDTH - 8, VIEW_HEIGHT - 8);
 }
@@ -4235,6 +4528,21 @@ function answerQuestion(choice) {
 
 function updateUI() {
   document.getElementById('gemCount').textContent = gemsCollected;
+  
+  // Update level label
+  const lvlLabel = document.getElementById('levelLabel');
+  if (lvlLabel) {
+    const lang = currentLang || 'en';
+    lvlLabel.textContent = lang === 'th' ? `ด่าน ${currentLevel}` : `Lv ${currentLevel}`;
+  }
+  
+  // Update collectible icon based on level
+  const gemsLabel = document.getElementById('gemsLabel');
+  if (gemsLabel) {
+    const type = LEVEL_SIZES[currentLevel].collectible;
+    gemsLabel.textContent = type === 'gem' ? '💎' : type === 'cloth' ? '🧵' : '⭐';
+  }
+  
   const progressDiv = document.getElementById('gemProgress');
   progressDiv.innerHTML = '';
   for (let i = 0; i < 10; i++) {
@@ -4269,9 +4577,29 @@ function selectLanguage(lang) {
 function closeIntro() {
   sfxClick();
   document.getElementById('introModal').classList.remove('active');
+  // Always start at Level 1
+  setLevel(1);
   gameState = 'playing';
+  restartGame();
   updateHelpButton();
   startBGM();
+}
+
+// Advance to next level after winning
+function nextLevel() {
+  sfxClick();
+  if (currentLevel < 3) {
+    setLevel(currentLevel + 1);
+    document.querySelectorAll('.modal').forEach(m => m.classList.remove('active'));
+    restartGame();
+    startBGM();
+  } else {
+    // Beat all levels - restart from level 1
+    setLevel(1);
+    document.querySelectorAll('.modal').forEach(m => m.classList.remove('active'));
+    restartGame();
+    startBGM();
+  }
 }
 
 function showEscapeMessage() {
@@ -4320,6 +4648,16 @@ function winGame() {
   gameState = 'won';
   stopBGM();
   sfxWin();
+  
+  // Update button text based on level
+  const btn = document.getElementById('winPlayAgain');
+  const lang = currentLang || 'en';
+  if (currentLevel < 3) {
+    btn.textContent = lang === 'th' ? `▶️ ไปด่าน ${currentLevel + 1}` : `▶️ Go to Level ${currentLevel + 1}`;
+  } else {
+    btn.textContent = lang === 'th' ? '🔄 เล่นใหม่อีกครั้ง' : '🔄 Play Again';
+  }
+  
   document.getElementById('winModal').classList.add('active');
   drawRainbowHeart();
 }
@@ -4409,6 +4747,273 @@ function drawRainbowHeart() {
     wctx.fill();
     
     wctx.restore();
+  }
+  
+  // Draw beautiful striped cloth (Level 2 reward)
+  function drawClothReward(cx, cy, scale, alpha) {
+    wctx.save();
+    wctx.globalAlpha = alpha;
+    
+    const w = 90 * scale;
+    const h = 130 * scale;
+    
+    // Glow
+    wctx.shadowColor = '#42a5f5';
+    wctx.shadowBlur = 25;
+    
+    // Background blue cloth
+    wctx.fillStyle = '#1976d2';
+    wctx.fillRect(cx - w/2, cy - h/2, w, h);
+    wctx.shadowBlur = 0;
+    
+    // Vertical rainbow stripes
+    const stripes = [
+      { color: '#ff4444', pos: 0.15, width: 0.04 },
+      { color: '#ff9800', pos: 0.20, width: 0.025 },
+      { color: '#ffd700', pos: 0.235, width: 0.025 },
+      { color: '#4caf50', pos: 0.27, width: 0.025 },
+      { color: '#fff', pos: 0.305, width: 0.04 },
+      { color: '#ffd700', pos: 0.36, width: 0.025 },
+      { color: '#ff4444', pos: 0.395, width: 0.04 },
+      { color: '#fff', pos: 0.45, width: 0.025 },
+      
+      { color: '#fff', pos: 0.535, width: 0.025 },
+      { color: '#ff4444', pos: 0.57, width: 0.04 },
+      { color: '#ffd700', pos: 0.625, width: 0.025 },
+      { color: '#fff', pos: 0.66, width: 0.04 },
+      { color: '#4caf50', pos: 0.715, width: 0.025 },
+      { color: '#ffd700', pos: 0.75, width: 0.025 },
+      { color: '#ff9800', pos: 0.785, width: 0.025 },
+      { color: '#ff4444', pos: 0.82, width: 0.04 }
+    ];
+    
+    for (const s of stripes) {
+      wctx.fillStyle = s.color;
+      wctx.fillRect(cx - w/2 + s.pos * w, cy - h/2, s.width * w, h);
+    }
+    
+    // Folded shadow band across middle
+    wctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+    wctx.fillRect(cx - w/2, cy - 5, w, 10);
+    
+    // Highlight
+    wctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+    wctx.fillRect(cx - w/2 + 5, cy - h/2 + 5, w * 0.2, h * 0.6);
+    
+    // Outline
+    wctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+    wctx.lineWidth = 2;
+    wctx.strokeRect(cx - w/2, cy - h/2, w, h);
+    
+    wctx.restore();
+  }
+  
+  // Draw Kuromi plush (Level 3 reward)
+  function drawKuromi(cx, cy, scale, alpha) {
+    wctx.save();
+    wctx.globalAlpha = alpha;
+    const s = scale;
+    
+    // Glow
+    wctx.shadowColor = '#9c27b0';
+    wctx.shadowBlur = 25;
+    
+    // Body (purple dress)
+    wctx.fillStyle = '#b388dd';
+    wctx.beginPath();
+    wctx.moveTo(cx - 28*s, cy + 8*s);
+    wctx.lineTo(cx - 38*s, cy + 50*s);
+    wctx.lineTo(cx + 38*s, cy + 50*s);
+    wctx.lineTo(cx + 28*s, cy + 8*s);
+    wctx.closePath();
+    wctx.fill();
+    wctx.shadowBlur = 0;
+    
+    // Dress ribbon/bow
+    wctx.fillStyle = '#d4a4e8';
+    wctx.beginPath();
+    wctx.moveTo(cx - 16*s, cy + 8*s);
+    wctx.lineTo(cx - 22*s, cy + 18*s);
+    wctx.lineTo(cx - 8*s, cy + 14*s);
+    wctx.closePath();
+    wctx.moveTo(cx + 16*s, cy + 8*s);
+    wctx.lineTo(cx + 22*s, cy + 18*s);
+    wctx.lineTo(cx + 8*s, cy + 14*s);
+    wctx.closePath();
+    wctx.fill();
+    
+    // Bow center knot
+    wctx.fillStyle = '#a070c0';
+    wctx.fillRect(cx - 5*s, cy + 8*s, 10*s, 10*s);
+    
+    // Dress hem stars
+    wctx.fillStyle = '#fff';
+    for (let i = 0; i < 5; i++) {
+      const sx = cx - 30*s + i * 15*s;
+      wctx.beginPath();
+      wctx.arc(sx, cy + 45*s, 1.5*s, 0, Math.PI * 2);
+      wctx.fill();
+    }
+    
+    // Hands (white paws)
+    wctx.fillStyle = '#fff';
+    wctx.beginPath();
+    wctx.arc(cx - 35*s, cy + 22*s, 5*s, 0, Math.PI * 2);
+    wctx.arc(cx + 35*s, cy + 22*s, 5*s, 0, Math.PI * 2);
+    wctx.fill();
+    
+    // Shoes (black)
+    wctx.fillStyle = '#222';
+    wctx.fillRect(cx - 18*s, cy + 50*s, 12*s, 8*s);
+    wctx.fillRect(cx + 6*s, cy + 50*s, 12*s, 8*s);
+    
+    // Head (white round face)
+    wctx.fillStyle = '#fff';
+    wctx.beginPath();
+    wctx.arc(cx, cy - 20*s, 28*s, 0, Math.PI * 2);
+    wctx.fill();
+    
+    // Black hood/hair around head
+    wctx.fillStyle = '#1a1a1a';
+    wctx.beginPath();
+    wctx.arc(cx, cy - 25*s, 32*s, Math.PI * 1.05, Math.PI * 1.95);
+    wctx.lineTo(cx + 28*s, cy - 22*s);
+    wctx.arc(cx, cy - 22*s, 28*s, 0, Math.PI, true);
+    wctx.closePath();
+    wctx.fill();
+    
+    // Big black ears (devil-like)
+    wctx.fillStyle = '#1a1a1a';
+    // Left ear
+    wctx.beginPath();
+    wctx.moveTo(cx - 25*s, cy - 38*s);
+    wctx.lineTo(cx - 42*s, cy - 55*s);
+    wctx.lineTo(cx - 18*s, cy - 30*s);
+    wctx.closePath();
+    wctx.fill();
+    // Right ear
+    wctx.beginPath();
+    wctx.moveTo(cx + 25*s, cy - 38*s);
+    wctx.lineTo(cx + 42*s, cy - 55*s);
+    wctx.lineTo(cx + 18*s, cy - 30*s);
+    wctx.closePath();
+    wctx.fill();
+    
+    // Yellow stars on ears
+    wctx.fillStyle = '#ffd700';
+    for (const [esx, esy] of [[-32, -47], [-26, -41], [-36, -38], [32, -47], [26, -41], [36, -38]]) {
+      wctx.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const a = i * Math.PI / 5 - Math.PI / 2;
+        const r = i % 2 === 0 ? 2*s : 1*s;
+        const x = cx + esx*s + Math.cos(a) * r;
+        const y = cy + esy*s + Math.sin(a) * r;
+        if (i === 0) wctx.moveTo(x, y);
+        else wctx.lineTo(x, y);
+      }
+      wctx.closePath();
+      wctx.fill();
+    }
+    
+    // Crown (gold)
+    wctx.fillStyle = '#ffd700';
+    wctx.beginPath();
+    wctx.moveTo(cx - 14*s, cy - 38*s);
+    wctx.lineTo(cx - 14*s, cy - 50*s);
+    wctx.lineTo(cx - 7*s, cy - 44*s);
+    wctx.lineTo(cx, cy - 52*s);
+    wctx.lineTo(cx + 7*s, cy - 44*s);
+    wctx.lineTo(cx + 14*s, cy - 50*s);
+    wctx.lineTo(cx + 14*s, cy - 38*s);
+    wctx.closePath();
+    wctx.fill();
+    wctx.strokeStyle = '#b8860b';
+    wctx.lineWidth = 1;
+    wctx.stroke();
+    
+    // Pink skull mark on forehead
+    wctx.fillStyle = '#ff9eb5';
+    wctx.beginPath();
+    wctx.arc(cx, cy - 25*s, 6*s, 0, Math.PI * 2);
+    wctx.fill();
+    // Skull eyes/mouth
+    wctx.fillStyle = '#1a1a1a';
+    wctx.beginPath();
+    wctx.arc(cx - 2*s, cy - 26*s, 1*s, 0, Math.PI * 2);
+    wctx.arc(cx + 2*s, cy - 26*s, 1*s, 0, Math.PI * 2);
+    wctx.fill();
+    // Skull mouth
+    wctx.fillRect(cx - 1.5*s, cy - 22*s, 3*s, 1.5*s);
+    
+    // Eyes (Kuromi's signature pointed eyes)
+    wctx.fillStyle = '#1a1a1a';
+    wctx.beginPath();
+    // Left eye - pointed
+    wctx.moveTo(cx - 14*s, cy - 18*s);
+    wctx.quadraticCurveTo(cx - 8*s, cy - 21*s, cx - 4*s, cy - 17*s);
+    wctx.quadraticCurveTo(cx - 8*s, cy - 11*s, cx - 14*s, cy - 18*s);
+    wctx.closePath();
+    wctx.fill();
+    // Right eye - pointed
+    wctx.beginPath();
+    wctx.moveTo(cx + 14*s, cy - 18*s);
+    wctx.quadraticCurveTo(cx + 8*s, cy - 21*s, cx + 4*s, cy - 17*s);
+    wctx.quadraticCurveTo(cx + 8*s, cy - 11*s, cx + 14*s, cy - 18*s);
+    wctx.closePath();
+    wctx.fill();
+    
+    // Eye highlights
+    wctx.fillStyle = '#fff';
+    wctx.beginPath();
+    wctx.arc(cx - 9*s, cy - 18*s, 1.5*s, 0, Math.PI * 2);
+    wctx.arc(cx + 9*s, cy - 18*s, 1.5*s, 0, Math.PI * 2);
+    wctx.fill();
+    
+    // Pink cheek blush
+    wctx.fillStyle = 'rgba(255, 150, 180, 0.6)';
+    wctx.beginPath();
+    wctx.arc(cx - 18*s, cy - 12*s, 4*s, 0, Math.PI * 2);
+    wctx.arc(cx + 18*s, cy - 12*s, 4*s, 0, Math.PI * 2);
+    wctx.fill();
+    
+    // Tiny smile
+    wctx.fillStyle = '#ff8aa3';
+    wctx.beginPath();
+    wctx.arc(cx, cy - 8*s, 2*s, 0, Math.PI);
+    wctx.fill();
+    // Nose (small triangle)
+    wctx.fillStyle = '#ff8aa3';
+    wctx.beginPath();
+    wctx.moveTo(cx, cy - 12*s);
+    wctx.lineTo(cx - 1.5*s, cy - 10*s);
+    wctx.lineTo(cx + 1.5*s, cy - 10*s);
+    wctx.closePath();
+    wctx.fill();
+    
+    // Keychain on top of head
+    wctx.strokeStyle = '#daa520';
+    wctx.lineWidth = 1;
+    wctx.beginPath();
+    wctx.moveTo(cx, cy - 52*s);
+    wctx.lineTo(cx, cy - 65*s);
+    wctx.stroke();
+    wctx.fillStyle = '#ffd700';
+    wctx.beginPath();
+    wctx.arc(cx, cy - 67*s, 3*s, 0, Math.PI * 2);
+    wctx.fill();
+    
+    wctx.restore();
+  }
+  
+  // Draw the level-appropriate reward (heart for L1, cloth for L2, kuromi for L3)
+  function drawReward(cx, cy, scale, alpha) {
+    if (currentLevel === 1) {
+      drawHeart(cx, cy, scale, alpha, wctx);
+    } else if (currentLevel === 2) {
+      drawClothReward(cx, cy, scale, alpha);
+    } else {
+      drawKuromi(cx, cy, scale, alpha);
+    }
   }
   
   // Draw Leah character in win scene
@@ -4528,13 +5133,23 @@ function drawRainbowHeart() {
     wctx.lineWidth = 5*s;
     wctx.lineCap = 'round';
     if (armsOpen) {
-      // Open arms wide for hug
+      // Hugging Leah from the RIGHT side - left arm reaches out to wrap around her
+      // Right arm relaxed at side, left arm extended forward/left toward Leah
       wctx.beginPath();
-      wctx.moveTo(cx - 16*s, cy + 12*s);
-      wctx.lineTo(cx - 32*s, cy + 18*s);
+      // Right arm down at side
       wctx.moveTo(cx + 16*s, cy + 12*s);
-      wctx.lineTo(cx + 32*s, cy + 18*s);
+      wctx.lineTo(cx + 22*s, cy + 28*s);
+      // Left arm reaching out and wrapping around Leah (who is to mom's left)
+      wctx.moveTo(cx - 16*s, cy + 12*s);
+      wctx.lineTo(cx - 38*s, cy + 18*s);
       wctx.stroke();
+      
+      // Hands
+      wctx.fillStyle = '#ffe0bd';
+      wctx.beginPath();
+      wctx.arc(cx + 22*s, cy + 29*s, 3*s, 0, Math.PI * 2);
+      wctx.arc(cx - 38*s, cy + 18*s, 3.5*s, 0, Math.PI * 2);
+      wctx.fill();
     } else {
       wctx.beginPath();
       wctx.moveTo(cx - 16*s, cy + 12*s);
@@ -4683,19 +5298,22 @@ function drawRainbowHeart() {
     wctx.lineCap = 'round';
     
     if (armsOpen) {
-      // Open arms wide for family hug
+      // Hugging Leah from the LEFT side - right arm reaches out to wrap around her
+      // Left arm relaxed at side, right arm extended forward/right toward Leah
       wctx.beginPath();
+      // Left arm down
       wctx.moveTo(cx - 13*s, cy - 2*s);
-      wctx.lineTo(cx - 26*s, cy + 8*s);
+      wctx.lineTo(cx - 18*s, cy + 18*s);
+      // Right arm reaching out and wrapping around Leah (who is to dad's right)
       wctx.moveTo(cx + 13*s, cy - 2*s);
-      wctx.lineTo(cx + 26*s, cy + 8*s);
+      wctx.lineTo(cx + 35*s, cy + 5*s);
       wctx.stroke();
       
-      // Hands open
+      // Hands
       wctx.fillStyle = '#f4d3a8';
       wctx.beginPath();
-      wctx.arc(cx - 26*s, cy + 9*s, 3*s, 0, Math.PI * 2);
-      wctx.arc(cx + 26*s, cy + 9*s, 3*s, 0, Math.PI * 2);
+      wctx.arc(cx - 18*s, cy + 19*s, 3*s, 0, Math.PI * 2);
+      wctx.arc(cx + 35*s, cy + 5*s, 3.5*s, 0, Math.PI * 2);
       wctx.fill();
     } else {
       // Default: arms relaxed, right hand holds wand
@@ -4920,7 +5538,7 @@ function drawRainbowHeart() {
         heartScale = 1 + Math.sin(Date.now() / 200) * 0.08;
       }
       
-      drawHeart(heartCx, heartCy, heartScale, heartAlpha, wctx);
+      drawReward(heartCx, heartCy, heartScale, heartAlpha);
       
       // Sparkles around heart
       for (let i = 0; i < 12; i++) {
@@ -4936,86 +5554,113 @@ function drawRainbowHeart() {
       }
     }
     
-    // === LEAH ENTERS (phase 1.8+, from left) ===
-    if (phase > 1.8) {
-      const leahT = Math.min(1, (phase - 1.8) / 0.7);
-      const leahEase = leahT * leahT * (3 - 2 * leahT);
-      
-      // Leah enters from far left
-      let leahFinalX = W * 0.25;
-      let leahCx = -50 + (leahFinalX - (-50)) * leahEase;
-      let leahCy = H * 0.72;
-      
-      // Slight bounce while walking
-      if (phase < 2.5) {
-        leahCy += Math.abs(Math.sin(phase * 8)) * 4;
-      }
-      
-      // During hug phase, move toward center
-      if (phase > 3.8) {
-        const hugT = Math.min(1, (phase - 3.8) / 0.5);
-        leahCx = leahFinalX + (W * 0.32 - leahFinalX) * hugT;
-      }
-      
-      drawLeahWin(leahCx, leahCy, 1.0, true);
-    }
-    
-    // === DADDY (PHO) ENTERS (phase 2.3+, walks behind Leah from left) ===
+    // === DADDY (PHO) ENTERS (phase 2.3+, hugs from LEFT) ===
     if (phase > 2.3) {
       const dadT = Math.min(1, (phase - 2.3) / 0.7);
       const dadEase = dadT * dadT * (3 - 2 * dadT);
       
-      // Dad enters slightly after Leah, takes center position
-      let dadFinalX = W * 0.5;
+      // Dad walks in from far LEFT, stops at left of Leah ready to hug
+      let dadFinalX = W * 0.32;
       let dadCx = -80 + (dadFinalX - (-80)) * dadEase;
-      let dadCy = H * 0.65;
+      let dadCy = H * 0.62; // slightly higher (further back) than Leah
       
       if (phase < 2.9) {
         dadCy += Math.abs(Math.sin(phase * 7)) * 4;
       }
       
-      // Open arms for hug when family gathered
-      const armsOpen = phase > 3.5;
+      const armsOpen = phase > 3.3;
       
-      // During hug, no movement - he's at center
-      drawDaddyWin(dadCx, dadCy, 1.1, 1, armsOpen);
+      if (phase > 3.8) {
+        const hugT = Math.min(1, (phase - 3.8) / 0.6);
+        const ease = hugT * hugT * (3 - 2 * hugT);
+        dadCx = dadFinalX + (W * 0.36 - dadFinalX) * ease;
+      }
+      
+      drawDaddyWin(dadCx, dadCy, 1.05, 1, armsOpen);
     }
     
-    // === MOMMY PANG ENTERS (phase 2.8+, from right) ===
+    // === MOMMY PANG ENTERS (phase 2.8+, hugs from RIGHT) ===
     if (phase > 2.8) {
       const mommyT = Math.min(1, (phase - 2.8) / 0.7);
       const mommyEase = mommyT * mommyT * (3 - 2 * mommyT);
       
-      // Mommy enters from far right
-      let mommyFinalX = W * 0.75;
-      let mommyCx = W + 50 + (mommyFinalX - (W + 50)) * mommyEase;
-      let mommyCy = H * 0.68;
+      let mommyFinalX = W * 0.68;
+      let mommyCx = W + 80 + (mommyFinalX - (W + 80)) * mommyEase;
+      let mommyCy = H * 0.62; // slightly higher (further back) than Leah
       
       if (phase < 3.5) {
         mommyCy += Math.abs(Math.sin(phase * 9)) * 5;
       }
       
-      // During hug, move toward dad
       let armsOpen = phase > 3.3;
+      
       if (phase > 3.8) {
-        const hugT = Math.min(1, (phase - 3.8) / 0.5);
-        mommyCx = mommyFinalX + (W * 0.68 - mommyFinalX) * hugT;
+        const hugT = Math.min(1, (phase - 3.8) / 0.6);
+        const ease = hugT * hugT * (3 - 2 * hugT);
+        mommyCx = mommyFinalX + (W * 0.64 - mommyFinalX) * ease;
       }
       
       drawMommy(mommyCx, mommyCy, 1.0, 1, armsOpen);
     }
     
-    // === HUG SPARKLES (phase 4+) ===
+    // === LEAH ENTERS LAST (so she's drawn IN FRONT) ===
+    if (phase > 1.8) {
+      const leahT = Math.min(1, (phase - 1.8) / 0.7);
+      const leahEase = leahT * leahT * (3 - 2 * leahT);
+      
+      let leahFinalX = W * 0.5;
+      let leahCx = W * 0.2 + (leahFinalX - W * 0.2) * leahEase;
+      let leahCy = H * 0.74; // slightly LOWER (closer to camera) than parents
+      
+      if (phase < 2.5) {
+        leahCy += Math.abs(Math.sin(phase * 8)) * 4;
+      }
+      
+      // Slight up motion when being hugged
+      if (phase > 3.8) {
+        const hugT = Math.min(1, (phase - 3.8) / 0.6);
+        leahCy = H * 0.74 - hugT * 2;
+      }
+      
+      // Make Leah just slightly bigger than parents to look "in front"
+      drawLeahWin(leahCx, leahCy, 1.05, true);
+    }
+    
+    // === HUG GLOW EFFECT (phase 4+) - warm light around family ===
     if (phase > 4) {
+      const familyCx = W * 0.5;
+      const familyCy = H * 0.7;
+      
+      // Warm pink/gold glow behind family
+      const glowGrad = wctx.createRadialGradient(familyCx, familyCy, 0, familyCx, familyCy, W * 0.4);
+      glowGrad.addColorStop(0, 'rgba(255, 200, 220, 0.3)');
+      glowGrad.addColorStop(0.5, 'rgba(255, 180, 200, 0.15)');
+      glowGrad.addColorStop(1, 'rgba(255, 150, 180, 0)');
+      wctx.fillStyle = glowGrad;
+      wctx.fillRect(0, 0, W, H);
+      
       // Hearts floating up around the family
-      for (let i = 0; i < 12; i++) {
-        const t = (Date.now() / 25 + i * 50) % 220;
-        const x = W * 0.2 + (i * 50) % (W * 0.6) + Math.sin(t / 30 + i) * 15;
+      for (let i = 0; i < 14; i++) {
+        const t = (Date.now() / 22 + i * 50) % 240;
+        const x = W * 0.2 + (i * 45) % (W * 0.6) + Math.sin(t / 28 + i) * 18;
         const y = H * 0.95 - t * 1.6;
-        const alpha = 1 - t / 220;
+        const alpha = (1 - t / 240) * 0.9;
         wctx.fillStyle = `rgba(255, 100, 150, ${alpha})`;
         wctx.font = `${14 + (i % 3) * 5}px Arial`;
         wctx.fillText('💕', x, y);
+      }
+      
+      // Sparkles concentrated around the hug
+      for (let i = 0; i < 8; i++) {
+        const a = Date.now() / 600 + i * 0.78;
+        const r = 80 + Math.sin(Date.now()/300 + i) * 25;
+        const sx = familyCx + Math.cos(a) * r;
+        const sy = familyCy + Math.sin(a) * r * 0.6;
+        const sparkleSize = 2 + Math.sin(Date.now()/180 + i) * 1.2;
+        wctx.fillStyle = `rgba(255, 240, 200, ${0.5 + Math.sin(Date.now()/200 + i) * 0.3})`;
+        wctx.beginPath();
+        wctx.arc(sx, sy, sparkleSize, 0, Math.PI * 2);
+        wctx.fill();
       }
     }
     
@@ -5023,8 +5668,15 @@ function drawRainbowHeart() {
     const msgEl = document.getElementById('winMessage');
     const lang = currentLang || 'en';
     
+    // Reward names based on level
+    const rewardNameTH = currentLevel === 1 ? 'หัวใจสายรุ้ง' : currentLevel === 2 ? 'ผ้าทอสวยงาม' : 'ตุ๊กตาคุโรมิ';
+    const rewardNameEN = currentLevel === 1 ? 'Rainbow Heart' : currentLevel === 2 ? 'Beautiful Cloth' : 'Kuromi Plush';
+    const rewardEmoji = currentLevel === 1 ? '🌈' : currentLevel === 2 ? '🧵' : '🎀';
+    
     if (phase > 1.2 && messageStage === 0) {
-      msgEl.textContent = lang === 'th' ? '✨ หัวใจสายรุ้งสมบูรณ์แล้ว! ✨' : '✨ The Rainbow Heart is complete! ✨';
+      msgEl.textContent = lang === 'th' 
+        ? `✨ ${rewardNameTH}สมบูรณ์แล้ว! ✨` 
+        : `✨ The ${rewardNameEN} is complete! ✨`;
       messageStage = 1;
     }
     if (phase > 2.5 && messageStage === 1) {
@@ -5035,20 +5687,27 @@ function drawRainbowHeart() {
     }
     if (phase > 3.3 && messageStage === 2) {
       msgEl.innerHTML = lang === 'th'
-        ? '👧 ลีอาห์: "แม่แป้ง! หนูกับพ่อโฟนทำมาให้แม่!" 💝'
-        : '👧 Leah: "Mommy Pang! Daddy Pho and I made this for you!" 💝';
+        ? `👧 ลีอาห์: "แม่แป้ง! หนูทำ${rewardNameTH}มาให้แม่!" 💝`
+        : `👧 Leah: "Mommy Pang! I made this ${rewardNameEN} for you!" 💝`;
       messageStage = 3;
     }
     if (phase > 4.0 && messageStage === 3) {
-      msgEl.innerHTML = lang === 'th'
-        ? '💜 แม่แป้ง: "ลูกรัก! ที่รัก! แม่รักทุกคนมากๆ เลย!" 💜'
-        : '💜 Mommy Pang: "My darling! My love! I love you all so much!" 💜';
+      // Level 3: Mommy gives Kuromi to Leah!
+      if (currentLevel === 3) {
+        msgEl.innerHTML = lang === 'th'
+          ? '💜 แม่แป้ง: "ขอบคุณนะลูก! แม่ขอมอบคุโรมิให้ลูกตอบแทน!" 🎀'
+          : '💜 Mommy Pang: "Thank you! I give you this Kuromi as a gift!" 🎀';
+      } else {
+        msgEl.innerHTML = lang === 'th'
+          ? '💜 แม่แป้ง: "ลูกรัก! ที่รัก! แม่รักทุกคนมากๆ เลย!" 💜'
+          : '💜 Mommy Pang: "My darling! My love! I love you all so much!" 💜';
+      }
       messageStage = 4;
     }
     if (phase > 4.8 && messageStage === 4) {
       msgEl.innerHTML = lang === 'th'
-        ? '💖 ครอบครัวลีอาห์ กอดกันอย่างมีความสุขที่สุดเลย! 💖<br>👨👩👧 พ่อโฟน + แม่แป้ง + ลีอาห์ ❤️'
-        : '💖 Leah\'s family hugs together so happily! 💖<br>👨👩👧 Daddy Pho + Mommy Pang + Leah ❤️';
+        ? `💖 ครอบครัวลีอาห์ กอดกันอย่างมีความสุข! 💖<br>${rewardEmoji} ด่าน ${currentLevel} สำเร็จ! ${rewardEmoji}`
+        : `💖 Leah's family hugs happily! 💖<br>${rewardEmoji} Level ${currentLevel} Complete! ${rewardEmoji}`;
       messageStage = 5;
     }
     
@@ -5168,7 +5827,19 @@ canvas.addEventListener('click', function tryFullscreen() {
 }, true);
 
 // ==================== INIT ====================
+function setLevel(level) {
+  currentLevel = level;
+  const lvl = LEVEL_SIZES[level];
+  COLS = lvl.cols;
+  ROWS = lvl.rows;
+}
+
 function restartGame() {
+  // Apply current level's dimensions
+  const lvl = LEVEL_SIZES[currentLevel];
+  COLS = lvl.cols;
+  ROWS = lvl.rows;
+  
   document.querySelectorAll('.modal').forEach(m => m.classList.remove('active'));
   if (escapeTimer) clearInterval(escapeTimer);
   if (helpInterval) { clearInterval(helpInterval); helpInterval = null; }
