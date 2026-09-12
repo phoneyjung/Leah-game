@@ -7,9 +7,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Leah's Cave">
-<meta name="theme-color" content="#1a0033">
+<meta name="theme-color" content="#12002b">
 <meta name="screen-orientation" content="landscape">
-<link rel="manifest" href='data:application/manifest+json,{"name":"Leah%27s Cave Adventure","short_name":"Leah Cave","start_url":".","display":"fullscreen","orientation":"landscape","background_color":"%231a0033","theme_color":"%23c2185b","icons":[{"src":"data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 200 200%22%3E%3Crect fill=%22%23c2185b%22 width=%22200%22 height=%22200%22 rx=%2230%22/%3E%3Ctext x=%22100%22 y=%22130%22 text-anchor=%22middle%22 font-size=%22120%22%3E%F0%9F%92%9D%3C/text%3E%3C/svg%3E","sizes":"192x192","type":"image/svg+xml"}]}'>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <title>🏔️ Leah's Cave Adventure - A Gift for Mom 💝</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -237,6 +239,122 @@
   }
   
   /* Landscape mode - optimize for horizontal phone use */
+  /* Landscape phones are short - let long modals scroll instead of clipping */
+  @media (orientation: landscape) and (max-height: 620px) {
+    .modal-content {
+      max-height: 94vh;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding-top: 14px;
+      padding-bottom: 14px;
+    }
+    #winCanvas { max-height: 46vh; width: auto; }
+    #introArt  { max-height: 34vh; width: auto; }
+    #introLogo { max-height: 16vh; width: auto; }
+    .modal-content h2 { font-size: 1.15em; margin: 2px 0; }
+    #winStars { font-size: 1.5em !important; }
+  }
+
+  /* Second player's pad, only shown in co-op */
+  .dpad2 { display: none !important; }
+  body.coop .dpad2 {
+    display: grid !important;
+    left: auto;
+    right: 24px;
+    bottom: 24px;
+    opacity: 0.5;
+  }
+  body.coop .dpad2 .center {
+    background: rgba(120, 60, 190, 0.55);
+    pointer-events: auto;
+    font-size: 1.1em;
+  }
+  /* Attack button steps aside so both pads fit */
+  body.coop .attack-btn {
+    width: 66px; height: 66px; font-size: 1.5em;
+    right: auto; left: 210px; bottom: 26px;
+  }
+
+  /* Tutorial hint bubble */
+  #tutorHint {
+    display: none;
+    position: fixed;
+    left: 24px;
+    bottom: 200px;
+    z-index: 200;
+    pointer-events: none;
+    background: rgba(25, 15, 45, 0.92);
+    color: #fff;
+    border: 2px solid rgba(255,255,255,0.35);
+    border-radius: 14px;
+    padding: 8px 14px;
+    font-size: 0.85em;
+    max-width: 230px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+    animation: hintPulse 1.4s ease-in-out infinite;
+  }
+  #tutorHint.show { display: block; }
+  #tutorHint.right { left: auto; right: 24px; bottom: 150px; }
+  @keyframes hintPulse {
+    0%, 100% { transform: translateY(0); opacity: 0.95; }
+    50%      { transform: translateY(-6px); opacity: 1; }
+  }
+  /* Glow the control the hint is pointing at */
+  .dpad.tutor button, .attack-btn.tutor {
+    animation: tutorGlow 1.2s ease-in-out infinite;
+  }
+  @keyframes tutorGlow {
+    0%, 100% { box-shadow: 0 3px 8px rgba(0,0,0,0.4); }
+    50%      { box-shadow: 0 0 16px 5px rgba(255, 220, 120, 0.85); }
+  }
+
+  .book-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 12px; border-radius: 14px;
+    background: linear-gradient(135deg, #fff0f6, #f3e9ff);
+    border: 2px solid #f0d4e6;
+  }
+  .book-row.locked { opacity: 0.45; filter: grayscale(0.7); }
+  .book-thumb {
+    width: 54px; height: 54px; flex: 0 0 54px;
+    border-radius: 12px; background: #2a123f;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.6em;
+  }
+  .book-name { font-weight: bold; color: #c2185b; }
+  .book-sub  { font-size: 0.78em; color: #777; }
+
+  /* The game is built for landscape. In portrait we ask the player to turn. */
+  #rotateGate {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    background: linear-gradient(160deg, #12002b 0%, #2a0b4d 55%, #12002b 100%);
+    color: #fff;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    text-align: center;
+    padding: 24px;
+  }
+  .rotate-phone {
+    font-size: 72px;
+    animation: tipOver 2s ease-in-out infinite;
+  }
+  @keyframes tipOver {
+    0%, 40%   { transform: rotate(0deg); }
+    60%, 100% { transform: rotate(-90deg); }
+  }
+  .rotate-title { font-size: 1.3em; font-weight: bold; color: #ffd8ea; }
+  .rotate-sub   { font-size: 0.85em; opacity: 0.7; }
+
+  @media (orientation: portrait) and (max-width: 950px) {
+    #rotateGate { display: flex; }
+    body { overflow: hidden; }
+  }
+
   /* PORTRAIT MOBILE - bigger canvas */
   @media (max-width: 700px) and (orientation: portrait) {
     body { padding: 4px; }
@@ -560,6 +678,9 @@
     <div class="info-item"><span id="gemsLabel">💎</span> <span id="gemCount">0</span>/10</div>
     <div class="info-item">⏰ <span id="timer">--:--</span></div>
     <button id="muteBtn" onclick="toggleMute()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1.1em; cursor:pointer;" title="Mute/Unmute">🔊</button>
+    <button id="bookBtn" onclick="openBook()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="Collection">📖</button>
+    <button id="coopBtn" onclick="toggleCoop()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="2 players">👥</button>
+    <button id="speakToggle" onclick="toggleSpeak()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="Read aloud">🔊</button>
     <button id="fullscreenBtn" onclick="toggleFullscreen()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="Fullscreen">⛶</button>
   </div>
   
@@ -580,6 +701,12 @@
     <canvas id="gameCanvas"></canvas>
   </div>
   
+  <div id="rotateGate">
+    <div class="rotate-phone">📱</div>
+    <div class="rotate-title">หมุนจอเป็นแนวนอน</div>
+    <div class="rotate-sub">Rotate your device to play</div>
+  </div>
+
   <div class="mobile-controls" id="mobileControls">
     <div class="dpad" id="dpadControls">
       <button class="up" data-dx="0" data-dy="-1">⬆️</button>
@@ -589,6 +716,14 @@
       <button class="down" data-dx="0" data-dy="1">⬇️</button>
     </div>
     <button class="attack-btn" ontouchstart="event.preventDefault(); attackZombie()" onclick="attackZombie()" title="Attack zombie">⚔️</button>
+    <div class="dpad dpad2" id="dpad2Controls">
+      <button class="up" data-dx="0" data-dy="-1">⬆️</button>
+      <button class="left" data-dx="-1" data-dy="0">⬅️</button>
+      <button class="center">🪄</button>
+      <button class="right" data-dx="1" data-dy="0">➡️</button>
+      <button class="down" data-dx="0" data-dy="1">⬇️</button>
+    </div>
+    <div id="tutorHint"><span id="tutorText"></span></div>
   </div>
   
   <div class="controls">
@@ -619,6 +754,8 @@
 <div class="modal" id="introModal">
   <div class="modal-content">
     <h2 id="introTitle">🌟 Leah's Adventure 🌟</h2>
+    <img id="introLogo" src="art-logo-en.png" alt="" onerror="this.style.display='none'"
+         style="width:100%; max-width:420px; display:block; margin:0 auto 4px;">
     <img id="introArt" src="art-title.jpg" alt=""
          onerror="this.style.display='none'"
          style="width:100%; max-width:460px; border-radius:16px; margin:6px auto 10px; display:block; box-shadow:0 6px 18px rgba(0,0,0,0.25);">
@@ -635,8 +772,21 @@
     <h2 id="questionTitle">🧠 A Sparkly Gem!</h2>
     <p style="color:#666;" id="questionSubtitle">Answer to collect this gem 💎</p>
     <div class="question-text" id="questionText"></div>
+    <button onclick="repeatQuestion()" id="repeatBtn"
+            style="background:linear-gradient(135deg,#42a5f5,#1976d2); color:#fff; border:none;
+                   border-radius:999px; padding:8px 18px; font-size:0.95em; font-weight:bold;
+                   cursor:pointer; font-family:inherit; margin-bottom:8px;">🔊 ฟังคำถามอีกครั้ง</button>
     <div class="answer-buttons" id="answerButtons"></div>
     <div class="feedback" id="feedback"></div>
+  </div>
+</div>
+
+<!-- Collection Book -->
+<div class="modal" id="bookModal">
+  <div class="modal-content" style="max-width:560px;">
+    <h2 id="bookTitle">📖 สมุดสะสม</h2>
+    <div id="bookBody" style="display:flex; flex-direction:column; gap:10px; margin:14px 0;"></div>
+    <button class="continue-btn" onclick="closeBook()" id="bookClose">ปิด</button>
   </div>
 </div>
 
@@ -656,6 +806,8 @@
     <h2 id="winTitle">🎉 LEAH MADE IT! 🎉</h2>
     <p style="font-size: 1.1em;" id="winSub">Watch the gems become a Rainbow Heart for Mommy Pang...</p>
     <canvas id="winCanvas" width="400" height="320"></canvas>
+    <div id="winStars" style="font-size:2em; letter-spacing:6px; margin:6px 0;"></div>
+    <div id="winStarInfo" style="font-size:0.8em; color:#777; margin-bottom:6px;"></div>
     <p id="winMessage" style="font-size: 1.2em; color: #c2185b; font-weight: bold;"></p>
     <button class="continue-btn" id="winPlayAgain" onclick="nextLevel()">▶️ Next Level</button>
   </div>
@@ -1399,6 +1551,8 @@ function t(key) { return I18N[currentLang][key] || I18N.en[key] || key; }
 
 // Apply language to all UI strings
 function applyLanguage() {
+  const lg = document.getElementById('introLogo');
+  if (lg) lg.src = (currentLang === 'th') ? 'art-logo-th.png' : 'art-logo-en.png';
   document.getElementById('gameTitle').innerHTML = t('title');
   document.getElementById('gameSubtitle').innerHTML = t('subtitle');
   // leahLabel now shows level - updated by updateUI()
@@ -2154,6 +2308,28 @@ function updateAndDrawDust() {
 
 // === LEVEL PROGRESS (survives closing the tab) ===
 const SAVE_KEY = 'leahCaveProgress';
+const STARS_KEY = 'leahCaveStars';
+
+// Per-run scoring for the 3-star rating
+let runHits = 0;          // times a monster caught Leah this level
+let runStartTime = 0;     // when the level began
+const PAR_SECONDS = { 1: 120, 2: 210, 3: 300 }; // beat this for the speed star
+
+function loadStars() {
+  try { return JSON.parse(localStorage.getItem(STARS_KEY)) || {}; } catch (e) { return {}; }
+}
+function saveStars(level, earned) {
+  try {
+    const all = loadStars();
+    all[level] = Math.max(all[level] || 0, earned);
+    localStorage.setItem(STARS_KEY, JSON.stringify(all));
+  } catch (e) {}
+}
+// Which stars did this run earn? [allCollected, noHits, underPar]
+function runStars() {
+  const secs = (Date.now() - runStartTime) / 1000;
+  return [true, runHits === 0, secs <= (PAR_SECONDS[currentLevel] || 240)];
+}
 function saveProgress() {
   try { localStorage.setItem(SAVE_KEY, JSON.stringify({ level: currentLevel })); } catch (e) {}
 }
@@ -2516,6 +2692,7 @@ function updateZombies() {
 }
 
 function handleZombieCollision(zombie) {
+  runHits++;   // costs the "no damage" star
   zombie.hitCount++;
   
   if (zombie.hitCount === 1) {
@@ -3641,6 +3818,10 @@ function drawZombie(z) {
   const py = z.displayY * CELL_SIZE + CELL_SIZE / 2;
   const size = CELL_SIZE * 0.65;
   
+  if (z.alive && tutorStage === 1 &&
+      Math.max(Math.abs(z.x - player.x), Math.abs(z.y - player.y)) <= 2) {
+    tutorOnMonsterNear();
+  }
   // Peb the cave monster - animated sprite (falls back to the drawn version)
   if (ART.monWalk && z.alive) {
     if (z.gait === undefined) z.gait = { phase: 0, face: 1, lx: null, ly: null };
@@ -3906,9 +4087,9 @@ function drawPhoneAttack() {
 function updateDaddyCompanion() {
   if (!daddyCompanion) return;
   
-  // Follow Leah at a slight offset behind/above
-  const targetX = player.displayX - 0.6;
-  const targetY = player.displayY - 0.6;
+  // In co-op the second player steers him; otherwise he follows Leah
+  const targetX = coopMode ? dadCtl.x : player.displayX - 0.6;
+  const targetY = coopMode ? dadCtl.y : player.displayY - 0.6;
   
   // Smooth follow
   daddyCompanion.displayX += (targetX - daddyCompanion.displayX) * 0.12;
@@ -5021,6 +5202,7 @@ function attackZombie() {
 }
 
 function movePlayer(dx, dy) {
+  if (typeof tutorOnMove === 'function') tutorOnMove();
   if (gameState !== 'playing' && gameState !== 'escape') return;
   if (currentQuestionIndex !== -1) return;
   
@@ -5047,10 +5229,37 @@ function movePlayer(dx, dy) {
   }
 }
 
+// Reads a question out loud so a child who cannot read fluently can still play
+let speakOn = true;
+function speak(text) {
+  if (!speakOn || !('speechSynthesis' in window) || !text) return;
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = (currentLang === 'th') ? 'th-TH' : 'en-US';
+    u.rate = 0.9;
+    u.pitch = 1.1;
+    speechSynthesis.speak(u);
+  } catch (e) {}
+}
+function repeatQuestion() {
+  const q = activeQuestions[currentQuestionIndex];
+  if (!q) return;
+  speak(q.q + '. ' + q.options.join(', '));
+}
+function toggleSpeak() {
+  speakOn = !speakOn;
+  if (!speakOn && 'speechSynthesis' in window) { try { speechSynthesis.cancel(); } catch (e) {} }
+  const b = document.getElementById('speakToggle');
+  if (b) b.textContent = speakOn ? '🔊' : '🔇';
+  try { localStorage.setItem('leahCaveSpeak', speakOn ? '1' : '0'); } catch (e) {}
+}
+
 function showQuestion(index) {
   currentQuestionIndex = index;
   const question = activeQuestions[index];
   document.getElementById('questionText').textContent = question.q;
+  speak(question.q + '. ' + question.options.join(', '));
   
   const buttonsDiv = document.getElementById('answerButtons');
   buttonsDiv.innerHTML = '';
@@ -5175,6 +5384,13 @@ function selectLanguage(lang) {
 function closeIntro() {
   sfxClick();
   document.getElementById('introModal').classList.remove('active');
+  keepAwake();
+  lockLandscape();
+  try {
+    if (localStorage.getItem('leahCaveSpeak') === '0') { speakOn = false; const b = document.getElementById('speakToggle'); if (b) b.textContent = '🔇'; }
+    if (localStorage.getItem('leahCaveCoop') === '1') toggleCoop();
+  } catch (e) {}
+  setTimeout(tutorStart, 600);
   // Resume the furthest level reached, so closing the tab does not lose progress
   setLevel(loadProgress());
   applyLevelBackdrop();
@@ -5255,6 +5471,24 @@ function winGame() {
   stopBGM();
   sfxWin();
   
+  // Work out the 3-star rating for this run and keep the best
+  const st = runStars();
+  const earned = st.filter(Boolean).length;
+  saveStars(currentLevel, earned);
+  const starEl = document.getElementById('winStars');
+  if (starEl) {
+    starEl.innerHTML = st.map(ok =>
+      '<span style="opacity:' + (ok ? '1' : '0.22') + '">⭐</span>').join('');
+  }
+  const infoEl = document.getElementById('winStarInfo');
+  if (infoEl) {
+    const th = (currentLang || 'en') === 'th';
+    const secs = Math.round((Date.now() - runStartTime) / 1000);
+    infoEl.innerHTML = th
+      ? `เก็บครบ ✔ &nbsp;|&nbsp; ไม่โดนมอน ${st[1] ? '✔' : '✘'} &nbsp;|&nbsp; ภายใน ${PAR_SECONDS[currentLevel]}s ${st[2] ? '✔' : '✘'} (ใช้ ${secs}s)`
+      : `All collected ✔ &nbsp;|&nbsp; No hits ${st[1] ? '✔' : '✘'} &nbsp;|&nbsp; Under ${PAR_SECONDS[currentLevel]}s ${st[2] ? '✔' : '✘'} (${secs}s)`;
+  }
+
   // Update button text based on level
   const btn = document.getElementById('winPlayAgain');
   const lang = currentLang || 'en';
@@ -6489,6 +6723,12 @@ document.addEventListener('keydown', (e) => {
     case 'ArrowLeft': case 'a': case 'A': movePlayer(-1, 0); e.preventDefault(); break;
     case 'ArrowRight': case 'd': case 'D': movePlayer(1, 0); e.preventDefault(); break;
     case ' ': case 'f': case 'F': case 'x': case 'X': attackZombie(); e.preventDefault(); break;
+    // Player 2 (Daddy): I J K L to move, U for the wand
+    case 'i': case 'I': moveDad(0, -1); e.preventDefault(); break;
+    case 'k': case 'K': moveDad(0, 1); e.preventDefault(); break;
+    case 'j': case 'J': moveDad(-1, 0); e.preventDefault(); break;
+    case 'l': case 'L': moveDad(1, 0); e.preventDefault(); break;
+    case 'u': case 'U': dadZap(); e.preventDefault(); break;
   }
 });
 
@@ -6537,6 +6777,27 @@ canvas.addEventListener('touchend', (e) => {
     }
   }
   
+  // Player 2's pad drives Daddy; the middle button is his wand
+  const dpad2 = document.getElementById('dpad2Controls');
+  if (dpad2) {
+    dpad2.querySelectorAll('button[data-dx]').forEach(btn => {
+      const dx = parseInt(btn.dataset.dx), dy = parseInt(btn.dataset.dy);
+      let loop = null;
+      const start = e => { e.preventDefault(); moveDad(dx, dy); if (!loop) loop = setInterval(() => moveDad(dx, dy), 150); };
+      const stop  = e => { if (e) e.preventDefault(); if (loop) { clearInterval(loop); loop = null; } };
+      btn.addEventListener('touchstart', start, {passive: false});
+      btn.addEventListener('touchend', stop, {passive: false});
+      btn.addEventListener('touchcancel', stop, {passive: false});
+      btn.addEventListener('mousedown', start);
+      document.addEventListener('mouseup', stop);
+    });
+    const zap = dpad2.querySelector('.center');
+    if (zap) {
+      zap.addEventListener('touchstart', e => { e.preventDefault(); dadZap(); }, {passive: false});
+      zap.addEventListener('click', dadZap);
+    }
+  }
+
   // Set up each direction button
   dpad.querySelectorAll('button[data-dx]').forEach(btn => {
     const dx = parseInt(btn.dataset.dx);
@@ -6583,6 +6844,169 @@ canvas.addEventListener('click', function tryFullscreen() {
   }
 }, true);
 
+// ==================== CO-OP: player 2 drives Daddy ====================
+let coopMode = false;
+const dadCtl = { x: 0, y: 1 };   // dad's own grid target in co-op
+let dadStunCooldown = 0;
+
+function toggleCoop() {
+  coopMode = !coopMode;
+  document.body.classList.toggle('coop', coopMode);
+  const b = document.getElementById('coopBtn');
+  if (b) b.style.background = coopMode ? 'rgba(194,24,91,0.25)' : 'none';
+  if (coopMode && daddyCompanion) {
+    // He floats diagonally behind Leah, which can land inside a wall.
+    // Snap him to Leah's cell, or the first open cell beside her.
+    dadCtl.x = player.x; dadCtl.y = player.y;
+    for (const [ox, oy] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+      const nx = player.x + ox, ny = player.y + oy;
+      if (maze[ny] && maze[ny][nx] !== 1) { dadCtl.x = nx; dadCtl.y = ny; break; }
+    }
+  }
+  try { localStorage.setItem('leahCaveCoop', coopMode ? '1' : '0'); } catch (e) {}
+  showToast(coopMode
+    ? (currentLang === 'th' ? '👥 โหมด 2 คน: พ่อโฟนใช้ปุ่มขวา' : '👥 2 players: Daddy uses the right pad')
+    : (currentLang === 'th' ? '👤 กลับเป็นเล่นคนเดียว' : '👤 Back to single player'));
+}
+
+let lastDadMove = 0;
+function moveDad(dx, dy) {
+  if (!coopMode || !daddyCompanion) return;
+  if (gameState !== 'playing' && gameState !== 'escape') return;
+  const now = Date.now();
+  if (now - lastDadMove < 150) return;
+  const nx = dadCtl.x + dx, ny = dadCtl.y + dy;
+  if (!maze[ny] || maze[ny][nx] === 1) return;
+  lastDadMove = now;
+  dadCtl.x = nx; dadCtl.y = ny;
+  if (dx !== 0) gait.dad.face = dx > 0 ? 1 : -1;
+}
+
+// Daddy's wand zap: stuns every monster standing next to him
+function dadZap() {
+  if (!coopMode || !daddyCompanion) return;
+  if (Date.now() < dadStunCooldown) return;
+  dadStunCooldown = Date.now() + 4000;
+  daddyCompanion.mode = 'wand';
+  wandRaise = { frames: 0 };
+  let got = 0;
+  for (const z of zombies) {
+    if (!z.alive) continue;
+    if (Math.max(Math.abs(z.x - dadCtl.x), Math.abs(z.y - dadCtl.y)) <= 1) {
+      z.moveTimer = -ZOMBIE_MOVE_INTERVAL * 2;
+      z.hurtUntil = Date.now() + 1200;
+      got++;
+    }
+  }
+  sfxMagic();
+  addShake(5);
+  setTimeout(() => { if (daddyCompanion && daddyCompanion.mode === 'wand' && magicLightTimer <= 0) daddyCompanion.mode = 'follow'; }, 700);
+  if (got) showToast(currentLang === 'th' ? '🪄 พ่อโฟนสะกดมอนเตอร์!' : '🪄 Daddy freezes the monsters!');
+}
+
+// ==================== TUTORIAL ====================
+let tutorStage = 0;          // 0 = move, 1 = attack, 2 = done
+let tutorMoves = 0;
+function tutorShow(text, right) {
+  const h = document.getElementById('tutorHint');
+  if (!h) return;
+  document.getElementById('tutorText').textContent = text;
+  h.classList.add('show');
+  h.classList.toggle('right', !!right);
+}
+function tutorHide() {
+  const h = document.getElementById('tutorHint');
+  if (h) h.classList.remove('show');
+  const d = document.getElementById('dpadControls');
+  if (d) d.classList.remove('tutor');
+  const a = document.querySelector('.attack-btn');
+  if (a) a.classList.remove('tutor');
+}
+function tutorStart() {
+  try { if (localStorage.getItem('leahCaveTutor') === '1') { tutorStage = 2; return; } } catch (e) {}
+  tutorStage = 0; tutorMoves = 0;
+  tutorShow(currentLang === 'th' ? '👆 กดลูกศรเพื่อพาลีอาห์เดิน' : '👆 Tap the arrows to walk');
+  const d = document.getElementById('dpadControls');
+  if (d) d.classList.add('tutor');
+}
+function tutorOnMove() {
+  if (tutorStage !== 0) return;
+  if (++tutorMoves < 4) return;
+  tutorHide();
+  tutorStage = 1;
+}
+function tutorOnMonsterNear() {
+  if (tutorStage !== 1) return;
+  tutorStage = 2;
+  tutorShow(currentLang === 'th' ? '⚔️ กดดาบเพื่อตีมอนเตอร์!' : '⚔️ Tap the sword to fight!', true);
+  const a = document.querySelector('.attack-btn');
+  if (a) a.classList.add('tutor');
+  setTimeout(tutorHide, 5000);
+  try { localStorage.setItem('leahCaveTutor', '1'); } catch (e) {}
+}
+
+// ==================== COLLECTION BOOK ====================
+const BOOK_ROWS = [
+  { lv: 1, icon: '💎', th: 'อัญมณีสายรุ้ง', en: 'Rainbow Gems',  rth: 'หัวใจสายรุ้ง', ren: 'Rainbow Heart' },
+  { lv: 2, icon: '🧵', th: 'เศษผ้าทอ',      en: 'Cloth Pieces',  rth: 'ผ้าทอสายรุ้ง', ren: 'Woven Cloth' },
+  { lv: 3, icon: '⭐', th: 'ดาวทอง',        en: 'Golden Stars',  rth: 'ตุ๊กตาน้องแมว', ren: 'Plush Friend' }
+];
+function openBook() {
+  sfxClick();
+  const th = currentLang === 'th';
+  const stars = loadStars();
+  const reached = loadProgress();
+  document.getElementById('bookTitle').textContent = th ? '📖 สมุดสะสม' : '📖 Collection';
+  document.getElementById('bookClose').textContent = th ? 'ปิด' : 'Close';
+  const body = document.getElementById('bookBody');
+  body.innerHTML = '';
+  BOOK_ROWS.forEach(r => {
+    const got = stars[r.lv] || 0;
+    const unlocked = r.lv <= reached || got > 0;
+    const row = document.createElement('div');
+    row.className = 'book-row' + (unlocked ? '' : ' locked');
+    row.innerHTML =
+      '<div class="book-thumb">' + (unlocked ? r.icon : '🔒') + '</div>' +
+      '<div style="flex:1; text-align:left;">' +
+        '<div class="book-name">' + (th ? 'ด่าน ' : 'Level ') + r.lv + ' — ' + (th ? r.th : r.en) + '</div>' +
+        '<div class="book-sub">' + (unlocked
+            ? (th ? 'รางวัล: ' : 'Reward: ') + (th ? r.rth : r.ren)
+            : (th ? 'ยังไม่ปลดล็อก' : 'Locked')) + '</div>' +
+      '</div>' +
+      '<div style="font-size:1.15em; letter-spacing:2px;">' +
+        '⭐'.repeat(got) + '<span style="opacity:0.25">' + '⭐'.repeat(3 - got) + '</span>' +
+      '</div>';
+    body.appendChild(row);
+  });
+  document.getElementById('bookModal').classList.add('active');
+}
+function closeBook() { sfxClick(); document.getElementById('bookModal').classList.remove('active'); }
+
+// ==================== PWA ====================
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
+
+// Keep the screen from sleeping mid-game (supported browsers only)
+let wakeLock = null;
+async function keepAwake() {
+  try {
+    if ('wakeLock' in navigator && document.visibilityState === 'visible') {
+      wakeLock = await navigator.wakeLock.request('screen');
+    }
+  } catch (e) {}
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') keepAwake();
+});
+
+// Lock to landscape once we are fullscreen (Android; iOS ignores it harmlessly)
+async function lockLandscape() {
+  try { await screen.orientation.lock('landscape'); } catch (e) {}
+}
+
 // ==================== INIT ====================
 function setLevel(level) {
   currentLevel = level;
@@ -6620,6 +7044,9 @@ function restartGame() {
   swordSlash = null;
   wandRaise = null;
   leahAttack = null;
+  
+  runHits = 0;
+  runStartTime = Date.now();
   
   document.getElementById('timer').textContent = '--:--';
   document.getElementById('timer').classList.remove('timer-warning');
