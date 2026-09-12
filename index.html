@@ -239,7 +239,8 @@
   }
   
   /* Landscape mode - optimize for horizontal phone use */
-  #introLogo, #introArt { object-fit: contain; }
+  #introLogo, #introArt, #loseArt { object-fit: contain; }
+  #loseArt { max-width: 420px; }
   #introLogo { max-width: 420px; }
   #introArt  { max-width: 460px; }
 
@@ -255,6 +256,7 @@
     #winCanvas { max-height: 46vh !important; width: auto !important; }
     #winVideo  { max-height: 46vh !important; width: auto !important; height: auto !important; }
     #introArt  { max-height: 32vh !important; width: auto !important; height: auto !important; }
+    #loseArt   { max-height: 34vh !important; width: auto !important; height: auto !important; }
     #introLogo { max-height: 14vh !important; width: auto !important; height: auto !important; }
     .modal-content h2 { font-size: 1.15em; margin: 2px 0; }
     #winStars { font-size: 1.5em !important; }
@@ -284,6 +286,35 @@
   .orb-btn:active { opacity: 1; transform: scale(0.9); }
   .orb-btn.cooling { opacity: 0.35; }
   body.coop .orb-btn { display: none; }   /* player 2 fires it with their own pad */
+
+  /* Warp stone button - only visible once one has been picked up */
+  .warp-btn {
+    position: fixed;
+    bottom: 226px;
+    right: 48px;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 32% 30%, rgba(215,180,255,0.95), rgba(110,60,190,0.92));
+    color: #fff;
+    border: 3px solid rgba(255,255,255,0.6);
+    font-size: 1.5em;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5), inset 0 -3px 6px rgba(0,0,0,0.3);
+    pointer-events: auto;
+    opacity: 0.85;
+    display: none;
+    touch-action: manipulation;
+    user-select: none; -webkit-user-select: none;
+    z-index: 101;
+    animation: warpPulse 1.6s ease-in-out infinite;
+  }
+  .warp-btn:active { transform: scale(0.9); opacity: 1; }
+  @keyframes warpPulse {
+    0%, 100% { box-shadow: 0 4px 12px rgba(0,0,0,0.5), 0 0 0 0 rgba(190,130,255,0.6); }
+    50%      { box-shadow: 0 4px 12px rgba(0,0,0,0.5), 0 0 18px 6px rgba(190,130,255,0.5); }
+  }
+  body.coop .warp-btn { right: auto; left: 210px; bottom: 104px; }
 
   /* Second player's pad, only shown in co-op */
   .dpad2 { display: none !important; }
@@ -788,6 +819,7 @@
       <button class="down" data-dx="0" data-dy="1">⬇️</button>
     </div>
     <button class="attack-btn" ontouchstart="event.preventDefault(); attackZombie()" onclick="attackZombie()" title="Attack zombie">⚔️</button>
+    <button class="warp-btn" id="warpBtn" ontouchstart="event.preventDefault(); useWarp()" onclick="useWarp()" title="Warp">🌀</button>
     <button class="orb-btn" id="orbBtn" ontouchstart="event.preventDefault(); playerFireOrb()" onclick="playerFireOrb()" title="Daddy's magic bolt">🔮</button>
     <div class="dpad dpad2" id="dpad2Controls">
       <button class="up" data-dx="0" data-dy="-1">⬆️</button>
@@ -849,6 +881,10 @@
             style="background:linear-gradient(135deg,#42a5f5,#1976d2); color:#fff; border:none;
                    border-radius:999px; padding:8px 18px; font-size:0.95em; font-weight:bold;
                    cursor:pointer; font-family:inherit; margin-bottom:8px;">🔊 ฟังคำถามอีกครั้ง</button>
+    <button onclick="askDaddy()" id="askDadBtn"
+            style="background:linear-gradient(135deg,#9c6ade,#5e35b1); color:#fff; border:none;
+                   border-radius:999px; padding:8px 18px; font-size:0.95em; font-weight:bold;
+                   cursor:pointer; font-family:inherit; margin:0 0 10px 8px;">🧙 ถามพ่อโฟน</button>
     <div class="answer-buttons" id="answerButtons"></div>
     <div class="feedback" id="feedback"></div>
   </div>
@@ -892,6 +928,8 @@
 <div class="modal" id="loseModal">
   <div class="modal-content">
     <h2 id="loseTitle">😢 Oh No, Leah! 😢</h2>
+    <img id="loseArt" src="art-lose.jpg" alt="" onerror="this.style.display='none'"
+         style="max-width:100%; height:auto; border-radius:16px; margin:8px auto; display:block; box-shadow:0 6px 18px rgba(0,0,0,0.25);">
     <p style="font-size: 1.2em; margin: 15px 0;" id="loseMessage"></p>
     <p style="color:#666;" id="loseSubMsg">Don't worry, Leah can try again! 💪</p>
     <button class="continue-btn" id="loseTryAgain" onclick="restartGame()">🔄 Try Again</button>
@@ -936,6 +974,8 @@ const ART_FILES = {
   reward5: 'art-reward5.png',
   exitArt: 'art-exit.png',
   leahHurt: 'art-leah-hurt.png',
+  fxCollect: 'art-fx-collect.jpg',  // 5-frame rainbow pickup burst
+  fxShield:  'art-fx-shield.jpg',   // 5-frame shield block
   plush: 'art-plush.png',   // level 3 reward
   hurt:  'art-mon-hurt.png' // Peb's startled face
 };
@@ -1180,6 +1220,53 @@ function playNoise(duration, volume=0.2, filterFreq=1000) {
 
 // Walking footstep (subtle thud)
 let lastStepTime = 0;
+// ==================== RECORDED SOUND EFFECTS ====================
+// Each sound keeps a small pool of Audio elements so rapid repeats overlap
+// instead of cutting each other off. Missing files simply fall back to the
+// synthesised versions below.
+const SFX_FILES = {
+  collect: 'sfx-collect.mp3',
+  correct: 'sfx-correct.mp3',
+  wrong:   'sfx-wrong.mp3',
+  magic:   'sfx-magic.mp3',
+  hit:     'sfx-hit.mp3',
+  win:     'sfx-win.mp3'
+};
+const SFX_VOL = { collect: 0.55, correct: 0.6, wrong: 0.5, magic: 0.5, hit: 0.55, win: 0.7 };
+const sfxPool = {};
+const SFX_VOICES = 3;
+
+for (const key in SFX_FILES) {
+  const voices = [];
+  let ready = 0;
+  for (let i = 0; i < SFX_VOICES; i++) {
+    const el = new Audio();
+    el.preload = 'auto';
+    el.volume = SFX_VOL[key] ?? 0.6;
+    el.addEventListener('canplaythrough', () => {
+      if (++ready === 1) sfxPool[key] = voices;   // usable as soon as one loads
+    }, { once: true });
+    el.addEventListener('error', () => { sfxPool[key] = null; });
+    el.src = SFX_FILES[key];
+    voices.push(el);
+  }
+}
+
+// Returns true when a recorded sound played, so the caller can skip the synth
+function playSfx(key) {
+  if (audioMuted) return true;      // muted, but still treat it as handled
+  const voices = sfxPool[key];
+  if (!voices) return false;
+  const el = voices.find(v => v.paused || v.ended) || voices[0];
+  try {
+    el.currentTime = 0;
+    el.volume = SFX_VOL[key] ?? 0.6;
+    const pr = el.play();
+    if (pr && pr.catch) pr.catch(() => {});
+    return true;
+  } catch (e) { return false; }
+}
+
 function sfxStep() {
   if (!audioCtx) return;
   const now = audioCtx.currentTime;
@@ -1190,6 +1277,7 @@ function sfxStep() {
 
 // Found a gem - twinkly arpeggio
 function sfxGemFound() {
+  if (playSfx('collect')) return;
   if (!audioCtx) return;
   const notes = [523.25, 659.25, 783.99, 1046.50]; // C E G C
   notes.forEach((f, i) => {
@@ -1199,6 +1287,7 @@ function sfxGemFound() {
 
 // Correct answer - happy ascending arpeggio + sparkle
 function sfxCorrect() {
+  if (playSfx('correct')) return;
   if (!audioCtx) return;
   // Major chord arpeggio C-E-G-C-E
   const notes = [523.25, 659.25, 783.99, 1046.50, 1318.51];
@@ -1217,6 +1306,7 @@ function sfxCorrect() {
 
 // Wrong answer - funny sad "wah-wah-waaah" trombone
 function sfxWrong() {
+  if (playSfx('wrong')) return;
   if (!audioCtx) return;
   // Classic sad trombone: 3 descending wobbly notes
   const notes = [
@@ -1267,6 +1357,7 @@ function sfxClick() {
 
 // Magic / Daddy Phone help
 function sfxMagic() {
+  if (playSfx('magic')) return;
   if (!audioCtx) return;
   playSweep(400, 2000, 0.5, 'sine', 0.25);
   setTimeout(() => playSweep(800, 3000, 0.4, 'triangle', 0.18), 100);
@@ -1278,6 +1369,7 @@ function sfxMagic() {
 
 // Zombie hit - "OUCH" comedic
 function sfxZombieHit() {
+  if (playSfx('hit')) return;
   if (!audioCtx) return;
   playSweep(800, 200, 0.3, 'sawtooth', 0.3);
   playNoise(0.15, 0.15, 600);
@@ -1299,6 +1391,7 @@ function sfxZombieZap() {
 
 // Win game - triumphant fanfare
 function sfxWin() {
+  if (playSfx('win')) return;
   if (!audioCtx) return;
   const fanfare = [
     {f: 523.25, t: 0,    d: 0.2}, // C
@@ -2722,8 +2815,110 @@ function drawBoss() {
   }
 }
 
+// ==================== ASK DADDY (one hint per level) ====================
+let hintsLeft = 1;
+
+function updateAskDadBtn() {
+  const b = document.getElementById('askDadBtn');
+  if (!b) return;
+  const th = currentLang === 'th';
+  if (hintsLeft > 0) {
+    b.disabled = false;
+    b.style.opacity = '1';
+    b.textContent = th ? '🧙 ถามพ่อโฟน (เหลือ 1)' : '🧙 Ask Daddy (1 left)';
+  } else {
+    b.disabled = true;
+    b.style.opacity = '0.4';
+    b.textContent = th ? '🧙 ใช้ไปแล้วด่านนี้' : '🧙 Used this level';
+  }
+}
+
+function askDaddy() {
+  if (hintsLeft <= 0 || currentQuestionIndex === -1) return;
+  const q = activeQuestions[currentQuestionIndex];
+  if (!q) return;
+  hintsLeft--;
+  updateAskDadBtn();
+
+  // Daddy casts, then the right answer lights up and taps itself
+  dadCastUntil = Date.now() + 620;
+  if (daddyCompanion) { daddyCompanion.mode = 'wand'; wandRaise = { frames: 0 }; }
+  sfxMagic();
+  if ('speechSynthesis' in window) { try { speechSynthesis.cancel(); } catch (e) {} }
+
+  const buttons = document.querySelectorAll('#answerButtons .answer-btn');
+  buttons.forEach((b, i) => {
+    if (i !== q.answer) { b.style.opacity = '0.35'; b.disabled = true; }
+  });
+  const right = buttons[q.answer];
+  if (right) {
+    right.style.boxShadow = '0 0 0 4px rgba(255,215,0,0.9), 0 0 22px 8px rgba(255,215,0,0.6)';
+    right.style.transform = 'scale(1.04)';
+  }
+  showToast(currentLang === 'th'
+    ? '🪄 พ่อโฟนกระซิบคำตอบให้แล้ว!'
+    : '🪄 Daddy whispers the answer!');
+  speak(currentLang === 'th' ? 'คำตอบคือ ' + q.options[q.answer] : 'The answer is ' + q.options[q.answer]);
+  setTimeout(() => { if (currentQuestionIndex !== -1) answerQuestion(q.answer); }, 1600);
+}
+
+// ==================== WARP STONE (one per level) ====================
+let warpCharges = 0;
+
+function updateWarpBtn() {
+  const b = document.getElementById('warpBtn');
+  if (b) b.style.display = warpCharges > 0 ? 'block' : 'none';
+}
+
+// Teleports to the farthest question still unanswered, or to the exit when
+// every question is done - so it is useful at any point in the level.
+function useWarp() {
+  if (warpCharges <= 0) return;
+  if (gameState !== 'playing' && gameState !== 'escape') return;
+  if (currentQuestionIndex !== -1) return;
+
+  let dest = null, best = -1;
+  for (const qp of questionPositions) {
+    if (qp.answered) continue;
+    const d = Math.abs(qp.x - player.x) + Math.abs(qp.y - player.y);
+    if (d > best) { best = d; dest = { x: qp.x, y: qp.y }; }
+  }
+  if (!dest) dest = { x: exitPos.x, y: exitPos.y };
+
+  warpCharges--;
+  updateWarpBtn();
+
+  // Daddy performs the spell
+  dadCastUntil = Date.now() + 620;
+  if (daddyCompanion) { daddyCompanion.mode = 'wand'; wandRaise = { frames: 0 }; }
+  sfxMagic();
+  playFx('fxCollect', player.x, player.y, 1.3);
+  addShake(8);
+
+  const th = currentLang === 'th';
+  showToast(dest.x === exitPos.x && dest.y === exitPos.y
+    ? (th ? '🌀 วาร์ปไปที่ประตูทางออก!' : '🌀 Warped to the exit!')
+    : (th ? '🌀 วาร์ปไปหาคำถามที่ไกลที่สุด!' : '🌀 Warped to the farthest question!'));
+
+  setTimeout(() => {
+    player.x = dest.x; player.y = dest.y;
+    player.displayX = dest.x; player.displayY = dest.y;
+    // Start the breadcrumb trail fresh here, otherwise the old crumbs drag
+    // Daddy back across the whole maze
+    leahTrail = [{ x: dest.x, y: dest.y }];
+    dadTrailIdx = 0;
+    if (daddyCompanion) { daddyCompanion.displayX = dest.x; daddyCompanion.displayY = dest.y; }
+    if (coopMode) { dadCtl.x = dest.x; dadCtl.y = dest.y; }
+    playFx('fxCollect', dest.x, dest.y, 1.3);
+    addShake(8);
+    const qPos = questionPositions.find(q => q.x === dest.x && q.y === dest.y && !q.answered);
+    if (qPos) setTimeout(() => showQuestion(qPos.index), 350);
+  }, 520);
+}
+
 function collectPickup(u) {
   const th = currentLang === 'th';
+  playFx('fxCollect', u.x, u.y, 0.9);
   sfxGemFound();
   addShake(3);
   if (u.kind === 'lantern') {
@@ -2732,6 +2927,10 @@ function collectPickup(u) {
   } else if (u.kind === 'boots') {
     buffSpeed = BUFF_SECONDS;
     showToast(th ? '👟 วิ่งเร็วขึ้น 30 วินาที!' : '👟 Faster for 30s!');
+  } else if (u.kind === 'warp') {
+    warpCharges++;
+    updateWarpBtn();
+    showToast(th ? '🌀 ได้หินวาร์ป! กดปุ่มเพื่อให้พ่อร่ายเวท' : '🌀 Warp stone! Tap it and Daddy casts');
   } else {
     buffShield++;
     showToast(th ? '🛡️ ได้โล่! กันมอนได้ 1 ครั้ง' : '🛡️ Shield! Blocks one hit');
@@ -3056,6 +3255,11 @@ function generateMaze() {
     pickups.push({ x: freeCells[i].x, y: freeCells[i].y,
                    kind: PICKUP_KINDS[i % PICKUP_KINDS.length] });
   }
+  // One warp stone per level, placed away from the other pickups
+  if (freeCells.length > pickupCount) {
+    const w = freeCells[pickupCount];
+    pickups.push({ x: w.x, y: w.y, kind: 'warp' });
+  }
 
   // --- SECRET ROOMS ---
   // A wall with exactly one open neighbour hides a dead-end pocket behind it.
@@ -3269,6 +3473,7 @@ function handleZombieCollision(zombie) {
   if (buffShield > 0) {
     buffShield--;
     leahInvincible = INVINCIBLE_FRAMES;
+    playFx('fxShield', player.x, player.y, 1.25);
     addShake(7);
     sfxZombieHit();
     showToast(currentLang === 'th' ? '🛡️ โล่ป้องกันไว้ได้!' : '🛡️ Your shield blocked it!');
@@ -3994,6 +4199,7 @@ function draw() {
   if (!frozen) { updateDadOrbs(); updateBoss(); }
   drawPickups();
   drawBoss();
+  drawFx();
   {
     const ob = document.getElementById('orbBtn');
     if (ob) ob.classList.toggle('cooling', Date.now() < orbCooldown);
@@ -4756,13 +4962,33 @@ function drawPhoneAttack() {
 function updateDaddyCompanion() {
   if (!daddyCompanion) return;
   
-  // In co-op the second player steers him; otherwise he follows Leah
-  const targetX = coopMode ? dadCtl.x : player.displayX - 0.6;
-  const targetY = coopMode ? dadCtl.y : player.displayY - 0.6;
+  // In co-op the second player steers him. Otherwise he walks Leah's own
+  // footsteps a few cells back, so he is always standing on open floor -
+  // the old diagonal offset regularly parked him inside a wall.
+  let targetX, targetY;
+  if (coopMode) {
+    targetX = dadCtl.x; targetY = dadCtl.y;
+  } else {
+    // Step along the trail one cell at a time. Lerping straight at a distant
+    // cell lets him cut corners through stone, so advance only to the next
+    // breadcrumb once he has reached the current one.
+    const goal = Math.max(0, leahTrail.length - 1 - DAD_FOLLOW_GAP);
+    if (dadTrailIdx > goal) dadTrailIdx = goal;          // Leah doubled back
+    if (dadTrailIdx >= leahTrail.length) dadTrailIdx = leahTrail.length - 1;
+    const here = leahTrail[dadTrailIdx] || { x: player.x, y: player.y };
+    const reached = Math.abs(daddyCompanion.displayX - here.x) < 0.25 &&
+                    Math.abs(daddyCompanion.displayY - here.y) < 0.25;
+    if (reached && dadTrailIdx < goal) dadTrailIdx++;
+    const cell = leahTrail[dadTrailIdx] || here;
+    targetX = cell.x; targetY = cell.y;
+  }
   
   // Smooth follow
-  daddyCompanion.displayX += (targetX - daddyCompanion.displayX) * 0.12;
-  daddyCompanion.displayY += (targetY - daddyCompanion.displayY) * 0.12;
+  // Hurry up when he has fallen behind, stroll when he is close
+  const behind = leahTrail.length - 1 - dadTrailIdx;
+  const ease = coopMode ? 0.12 : Math.min(0.34, 0.16 + behind * 0.03);
+  daddyCompanion.displayX += (targetX - daddyCompanion.displayX) * ease;
+  daddyCompanion.displayY += (targetY - daddyCompanion.displayY) * ease;
   
   daddyCompanion.bobOffset = Math.sin(Date.now() / 200) * 2;
 }
@@ -5812,6 +6038,17 @@ function drawEscapeOverlay() {
 }
 
 // ==================== GAME LOGIC ====================
+// Breadcrumb trail of the cells Leah has stood on, so Daddy can retrace them
+let leahTrail = [];
+const DAD_FOLLOW_GAP = 2;   // how many cells back he walks
+let dadTrailIdx = 0;        // which breadcrumb he is currently walking to
+function pushTrail(x, y) {
+  const last = leahTrail[leahTrail.length - 1];
+  if (last && last.x === x && last.y === y) return;
+  leahTrail.push({ x, y });
+  if (leahTrail.length > 40) { leahTrail.shift(); if (dadTrailIdx > 0) dadTrailIdx--; }
+}
+
 let lastPlayerMoveTime = 0;
 const PLAYER_MOVE_COOLDOWN_MS = 130; // minimum time between moves (slower!)
 let lastAttackTime = 0;
@@ -5924,6 +6161,7 @@ function movePlayer(dx, dy) {
 
   player.x = newX;
   player.y = newY;
+  pushTrail(newX, newY);
   sfxStep();
 
   // Pick anything up that is standing on this tile
@@ -5972,6 +6210,7 @@ function showQuestion(index) {
   currentQuestionIndex = index;
   const question = activeQuestions[index];
   document.getElementById('questionText').textContent = question.q;
+  updateAskDadBtn();
   speak(question.q + '. ' + question.options.join(', '));
   
   const buttonsDiv = document.getElementById('answerButtons');
@@ -5990,6 +6229,9 @@ function showQuestion(index) {
 }
 
 function answerQuestion(choice) {
+  // Stop the narration the moment she answers - hearing the rest of the
+  // question while the result shows is confusing
+  if ('speechSynthesis' in window) { try { speechSynthesis.cancel(); } catch (e) {} }
   const question = activeQuestions[currentQuestionIndex];
   const buttons = document.querySelectorAll('#answerButtons .answer-btn');
   const feedback = document.getElementById('feedback');
@@ -6022,6 +6264,7 @@ function answerQuestion(choice) {
     
     // Play gem-found sound shortly after correct sound
     setTimeout(() => sfxGemFound(), 600);
+    playFx('fxCollect', qPos.x, qPos.y, 1.15);
     
     const px = qPos.x * CELL_SIZE + CELL_SIZE/2;
     const py = qPos.y * CELL_SIZE + CELL_SIZE/2;
@@ -7624,6 +7867,7 @@ document.addEventListener('keydown', (e) => {
     case 'l': case 'L': moveDad(1, 0); e.preventDefault(); break;
     case 'u': case 'U': if (!fireDadOrb(true)) dadZap(); e.preventDefault(); break;
     case 'e': case 'E': case 'q': case 'Q': playerFireOrb(); e.preventDefault(); break;
+    case 'r': case 'R': useWarp(); e.preventDefault(); break;
   }
 });
 
@@ -7777,17 +8021,34 @@ function routeToMonster(fromX, fromY, maxSteps) {
 }
 
 let dadCastUntil = 0;   // show the casting pose until this moment
+const AUTO_ORB_COOLDOWN_MS = 6000;  // he only steps in now and then on his own
+const AUTO_ORB_RANGE = 4;           // and only when something is genuinely close
+let lastAutoOrb = 0;
+
 function fireDadOrb(force) {
   if (!daddyCompanion) return false;
   if (gameState !== 'playing' && gameState !== 'escape') return false;
   if (Date.now() < orbCooldown) return false;
+  // Automatic shots are rationed separately so the player stays the one fighting
+  if (!force && Date.now() - lastAutoOrb < AUTO_ORB_COOLDOWN_MS) return false;
 
   const ox = daddyCompanion.displayX, oy = daddyCompanion.displayY;
   const cx = Math.round(ox), cy = Math.round(oy);
-  const route = routeToMonster(cx, cy, ORB_RANGE + 4);
+  const route = routeToMonster(cx, cy, force ? ORB_RANGE + 4 : AUTO_ORB_RANGE);
   if (!route && !force) return false;
 
-  orbCooldown = Date.now() + (Date.now() < rapidUntil ? 450 : ORB_COOLDOWN_MS);
+  // With no route, he would fire straight ahead. Refuse if he is facing a
+  // wall - the bolt would just pop against the stone and waste the cooldown.
+  if (!route) {
+    const fx = cx + (gait.dad.face >= 0 ? 1 : -1);
+    if (!maze[cy] || maze[cy][fx] === undefined || maze[cy][fx] === 1) {
+      showToast(currentLang === 'th' ? '🧱 มีกำแพงขวางอยู่!' : '🧱 A wall is in the way!');
+      return false;
+    }
+  }
+  if (!force) lastAutoOrb = Date.now();
+
+  orbCooldown = Date.now() + (force && Date.now() < rapidUntil ? 450 : ORB_COOLDOWN_MS);
   dadCastUntil = Date.now() + 620;
 
   if (route) {
@@ -7876,6 +8137,31 @@ function orbBurst(x, y, hit) {
   }
 }
 
+// Short sprite-sheet effects played in world space. Black backgrounds vanish
+// because everything is drawn additively.
+let fxPlaying = [];
+function playFx(sheetKey, x, y, scale) {
+  fxPlaying.push({ key: sheetKey, x, y, t: 0, scale: scale || 1 });
+}
+function drawFx() {
+  for (let i = fxPlaying.length - 1; i >= 0; i--) {
+    const e = fxPlaying[i];
+    const sheet = ART[e.key];
+    if (!sheet) { fxPlaying.splice(i, 1); continue; }
+    e.t += 0.16;
+    const f = Math.floor(e.t);
+    if (f > 4) { fxPlaying.splice(i, 1); continue; }
+    const fw = sheet.width / 5;
+    const px = e.x * CELL_SIZE + CELL_SIZE / 2;
+    const py = e.y * CELL_SIZE + CELL_SIZE / 2;
+    const sz = CELL_SIZE * 2.2 * e.scale;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.drawImage(sheet, f * fw, 0, fw, sheet.height, px - sz / 2, py - sz / 2, sz, sz);
+    ctx.restore();
+  }
+}
+
 function drawPickups() {
   const t = Date.now() / 1000;
 
@@ -7889,11 +8175,13 @@ function drawPickups() {
     ctx.fillRect(c.x * CELL_SIZE, c.y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
   }
 
-  for (const u of pickups) {
+  for (let pi = 0; pi < pickups.length; pi++) {
+    const u = pickups[pi];
     const px = u.x * CELL_SIZE + CELL_SIZE / 2;
     const py = u.y * CELL_SIZE + CELL_SIZE / 2 + Math.sin(t * 2.4 + u.x) * 2.5;
     const tint = u.kind === 'lantern' ? '255,200,90'
                : u.kind === 'boots'   ? '120,240,160'
+               : u.kind === 'warp'    ? '190,120,255'
                : '120,190,255';
     const g = ctx.createRadialGradient(px, py, 0, px, py, CELL_SIZE * 0.72);
     g.addColorStop(0, `rgba(${tint},${0.42 + Math.sin(t * 3 + u.y) * 0.12})`);
@@ -7901,6 +8189,27 @@ function drawPickups() {
     ctx.fillStyle = g;
     ctx.fillRect(px - CELL_SIZE * 0.72, py - CELL_SIZE * 0.72, CELL_SIZE * 1.44, CELL_SIZE * 1.44);
 
+    if (u.kind === 'warp') {
+      // Spinning arcane portal, drawn so it stands out from the other pickups
+      const spin = t * 1.6 + u.x;
+      ctx.save();
+      ctx.translate(px, py);
+      for (let r = 0; r < 3; r++) {
+        ctx.rotate(spin * (r % 2 === 0 ? 1 : -1) * 0.5);
+        ctx.strokeStyle = `rgba(${190 - r * 30}, ${120 + r * 30}, 255, ${0.85 - r * 0.2})`;
+        ctx.lineWidth = 3 - r * 0.6;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, CELL_SIZE * (0.30 - r * 0.07), CELL_SIZE * (0.16 - r * 0.04), 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      const core = ctx.createRadialGradient(0, 0, 0, 0, 0, CELL_SIZE * 0.22);
+      core.addColorStop(0, 'rgba(255,255,255,0.95)');
+      core.addColorStop(1, 'rgba(160,100,255,0)');
+      ctx.fillStyle = core;
+      ctx.beginPath(); ctx.arc(0, 0, CELL_SIZE * 0.22, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      continue;
+    }
     if (ART.powerups) {
       const fw = ART.powerups.width / 3;
       const idx = { lantern: 0, boots: 1, shield: 2 }[u.kind] ?? 0;
@@ -8215,10 +8524,17 @@ function restartGame() {
   
   runHits = 0;
   runStartTime = Date.now();
+  fxPlaying = [];
   dadOrbs = [];
   orbSparks = [];
   orbBursts = [];
   orbCooldown = 0;
+  lastAutoOrb = 0;
+  leahTrail = [{ x: 1, y: 1 }];
+  dadTrailIdx = 0;
+  hintsLeft = 1;
+  warpCharges = 0;
+  updateWarpBtn();
   
   document.getElementById('timer').textContent = '--:--';
   document.getElementById('timer').classList.remove('timer-warning');
