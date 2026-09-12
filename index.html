@@ -239,6 +239,10 @@
   }
   
   /* Landscape mode - optimize for horizontal phone use */
+  #introLogo, #introArt { object-fit: contain; }
+  #introLogo { max-width: 420px; }
+  #introArt  { max-width: 460px; }
+
   /* Landscape phones are short - let long modals scroll instead of clipping */
   @media (orientation: landscape) and (max-height: 620px) {
     .modal-content {
@@ -248,12 +252,37 @@
       padding-top: 14px;
       padding-bottom: 14px;
     }
-    #winCanvas { max-height: 46vh; width: auto; }
-    #introArt  { max-height: 34vh; width: auto; }
-    #introLogo { max-height: 16vh; width: auto; }
+    #winCanvas { max-height: 46vh !important; width: auto !important; }
+    #introArt  { max-height: 32vh !important; width: auto !important; height: auto !important; }
+    #introLogo { max-height: 14vh !important; width: auto !important; height: auto !important; }
     .modal-content h2 { font-size: 1.15em; margin: 2px 0; }
     #winStars { font-size: 1.5em !important; }
   }
+
+  /* Daddy's magic bolt button */
+  .orb-btn {
+    position: fixed;
+    bottom: 140px;
+    right: 44px;
+    width: 68px;
+    height: 68px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 32% 30%, rgba(200,170,255,0.95), rgba(96,52,180,0.92));
+    color: #fff;
+    border: 3px solid rgba(255,255,255,0.55);
+    font-size: 1.7em;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5), inset 0 -3px 6px rgba(0,0,0,0.3);
+    pointer-events: auto;
+    opacity: 0.72;
+    transition: opacity 0.15s, transform 0.1s;
+    touch-action: manipulation;
+    user-select: none; -webkit-user-select: none;
+    z-index: 101;
+  }
+  .orb-btn:active { opacity: 1; transform: scale(0.9); }
+  .orb-btn.cooling { opacity: 0.35; }
+  body.coop .orb-btn { display: none; }   /* player 2 fires it with their own pad */
 
   /* Second player's pad, only shown in co-op */
   .dpad2 { display: none !important; }
@@ -323,6 +352,22 @@
   }
   .book-name { font-weight: bold; color: #c2185b; }
   .book-sub  { font-size: 0.78em; color: #777; }
+
+  /* Loading screen - holds until the artwork is decoded */
+  #splashGate {
+    position: fixed; inset: 0; z-index: 99998;
+    background: #12002b center/cover no-repeat;
+    background-image: linear-gradient(rgba(10,0,30,0.42), rgba(10,0,30,0.72)), url('art-splash.jpg');
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+    transition: opacity 0.5s ease;
+  }
+  #splashGate.done { opacity: 0; pointer-events: none; }
+  #splashLogo { max-width: 62%; max-height: 34vh; height: auto; object-fit: contain;
+                filter: drop-shadow(0 6px 18px rgba(0,0,0,0.6)); }
+  #splashBar { width: 190px; height: 8px; border-radius: 99px;
+               background: rgba(255,255,255,0.18); overflow: hidden; }
+  #splashBar i { display: block; height: 100%; width: 0%; border-radius: 99px;
+                 background: linear-gradient(90deg,#ffd76a,#ff8ac2); transition: width 0.25s ease; }
 
   /* The game is built for landscape. In portrait we ask the player to turn. */
   #rotateGate {
@@ -455,7 +500,22 @@
       content: '🪄';
       font-size: 22px;
     }
-    .help-btn:disabled { opacity: 0.5; }
+    .help-btn:disabled { opacity: 0.55; }
+    /* Countdown printed over the wand button so the player can see it resting */
+    .help-btn[data-cd]::after {
+      content: attr(data-cd);
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      font-weight: bold;
+      color: #fff;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+      background: rgba(0,0,0,0.45);
+      border-radius: 50%;
+    }
     /* Hide cooldown text in landscape - icon brightness shows ready state */
     .cooldown-text {
       display: none;
@@ -701,6 +761,11 @@
     <canvas id="gameCanvas"></canvas>
   </div>
   
+  <div id="splashGate">
+    <img id="splashLogo" src="art-logo-en.png" alt="" onerror="this.style.display='none'">
+    <div id="splashBar"><i></i></div>
+  </div>
+
   <div id="rotateGate">
     <div class="rotate-phone">📱</div>
     <div class="rotate-title">หมุนจอเป็นแนวนอน</div>
@@ -716,6 +781,7 @@
       <button class="down" data-dx="0" data-dy="1">⬇️</button>
     </div>
     <button class="attack-btn" ontouchstart="event.preventDefault(); attackZombie()" onclick="attackZombie()" title="Attack zombie">⚔️</button>
+    <button class="orb-btn" id="orbBtn" ontouchstart="event.preventDefault(); playerFireOrb()" onclick="playerFireOrb()" title="Daddy's magic bolt">🔮</button>
     <div class="dpad dpad2" id="dpad2Controls">
       <button class="up" data-dx="0" data-dy="-1">⬆️</button>
       <button class="left" data-dx="-1" data-dy="0">⬅️</button>
@@ -755,10 +821,10 @@
   <div class="modal-content">
     <h2 id="introTitle">🌟 Leah's Adventure 🌟</h2>
     <img id="introLogo" src="art-logo-en.png" alt="" onerror="this.style.display='none'"
-         style="width:100%; max-width:420px; display:block; margin:0 auto 4px;">
+         style="max-width:100%; height:auto; display:block; margin:0 auto 4px;">
     <img id="introArt" src="art-title.jpg" alt=""
          onerror="this.style.display='none'"
-         style="width:100%; max-width:460px; border-radius:16px; margin:6px auto 10px; display:block; box-shadow:0 6px 18px rgba(0,0,0,0.25);">
+         style="max-width:100%; height:auto; border-radius:16px; margin:6px auto 10px; display:block; box-shadow:0 6px 18px rgba(0,0,0,0.25);">
     <div class="story-text" id="introStory">
     </div>
     <button class="continue-btn" id="startBtn" onclick="closeIntro()">🚀 Start Adventure!</button>
@@ -851,12 +917,19 @@ const ART_FILES = {
   floor: 'art-floor.jpg',
   wall:  'art-wall.jpg',
   items: 'art-items.png',   // 3 collectibles in one row: gem, cloth, star
+  burst: 'art-orb-burst.jpg', // 5-frame magic explosion, drawn additively
   plush: 'art-plush.png',   // level 3 reward
   hurt:  'art-mon-hurt.png' // Peb's startled face
 };
 const ITEM_INDEX = { gem: 0, cloth: 1, star: 2 };
 // Walk-cycle strips: one row of 4 frames each
-const WALK_FILES = { leah: 'art-leah-walk.png', dad: 'art-dad-walk.png', mon: 'art-mon-walk.png' };
+// Keys here are the exact names used in ART, so nothing is renamed on load
+const WALK_FILES = {
+  leahWalk: 'art-leah-walk.png',
+  dadWalk:  'art-dad-walk.png',
+  monWalk:  'art-mon-walk.png',
+  dadCast:  'art-dad-cast.png'
+};
 const WALK_FRAMES = 4;
 for (const key in ART_FILES) {
   const im = new Image();
@@ -868,10 +941,11 @@ for (const key in WALK_FILES) {
   const im = new Image();
   im.onload = () => {
     im.fw = im.width / WALK_FRAMES;
-    ART[key + 'Walk'] = im;
-    if (key === 'leah' || key === 'dad') ART[key] = im; // frame 0 doubles as the still pose
+    ART[key] = im;
+    if (key === 'leahWalk') ART.leah = im;   // frame 0 doubles as the still pose
+    if (key === 'dadWalk')  ART.dad  = im;
   };
-  im.onerror = () => { ART[key + 'Walk'] = null; };
+  im.onerror = () => { ART[key] = null; };
   im.src = WALK_FILES[key];
 }
 
@@ -1551,8 +1625,11 @@ function t(key) { return I18N[currentLang][key] || I18N.en[key] || key; }
 
 // Apply language to all UI strings
 function applyLanguage() {
+  const logoSrc = (currentLang === 'th') ? 'art-logo-th.png' : 'art-logo-en.png';
   const lg = document.getElementById('introLogo');
-  if (lg) lg.src = (currentLang === 'th') ? 'art-logo-th.png' : 'art-logo-en.png';
+  if (lg) lg.src = logoSrc;
+  const sl = document.getElementById('splashLogo');
+  if (sl) sl.src = logoSrc;
   document.getElementById('gameTitle').innerHTML = t('title');
   document.getElementById('gameSubtitle').innerHTML = t('subtitle');
   // leahLabel now shows level - updated by updateUI()
@@ -2852,16 +2929,20 @@ function updateHelpButton() {
     btn.disabled = true;
     btn.textContent = `${t('magicActive')} ${magicLightTimer.toFixed(1)}s ✨`;
     cdText.textContent = '';
+    btn.dataset.cd = magicLightTimer.toFixed(0);
   } else if (helpCooldownTimer > 0) {
     btn.disabled = true;
     const min = Math.floor(helpCooldownTimer / 60);
     const sec = Math.floor(helpCooldownTimer % 60);
     btn.textContent = t('helpResting');
     cdText.textContent = `⏳ ${min}:${sec.toString().padStart(2, '0')}`;
+    // The round landscape button hides its label, so put the countdown on it
+    btn.dataset.cd = min > 0 ? `${min}:${sec.toString().padStart(2, '0')}` : `${sec}`;
   } else {
     btn.disabled = false;
     btn.textContent = t('helpBtn');
     cdText.textContent = t('helpReady');
+    delete btn.dataset.cd;
   }
 }
 
@@ -3151,7 +3232,11 @@ function draw() {
   updateCamera();
   
   if (rescueActive) updateRescuePath();
-  if (!frozen) { updateZombies(); updateDaddyCompanion(); }
+  if (!frozen) {
+    updateZombies();
+    updateDaddyCompanion();
+    if (!coopMode) fireDadOrb(false);   // he defends Leah on his own
+  }
   
   let shakeX = 0, shakeY = 0;
   if (gameState === 'escape' && escapeTimeLeft < 60) {
@@ -3376,6 +3461,12 @@ function draw() {
   if (daddyCompanion) drawDaddyCompanion();
   
   // Draw sword slash effect
+  if (!frozen) updateDadOrbs();
+  {
+    const ob = document.getElementById('orbBtn');
+    if (ob) ob.classList.toggle('cooling', Date.now() < orbCooldown);
+  }
+  drawDadOrbs();
   updateAndDrawDust();
   if (swordSlash) drawSwordSlash();
   if (leahAttack) drawLeahAttack();
@@ -4128,7 +4219,15 @@ function drawDaddyCompanion() {
     ctx.beginPath();
     ctx.ellipse(px, py + CELL_SIZE * 0.5, CELL_SIZE * 0.26, CELL_SIZE * 0.08, 0, 0, Math.PI * 2);
     ctx.fill();
-    drawWalkFrame(ctx, ART.dadWalk, dFrame, px, bodyY + CELL_SIZE * 0.52, CELL_SIZE * 1.45, g.face);
+    const casting = ART.dadCast && Date.now() < dadCastUntil;
+    if (casting) {
+      // 4 cast frames spread across the 620ms window
+      const k = 1 - (dadCastUntil - Date.now()) / 620;
+      const cf = Math.min(3, Math.floor(k * 4));
+      drawWalkFrame(ctx, ART.dadCast, cf, px, bodyY + CELL_SIZE * 0.52, CELL_SIZE * 1.45, g.face);
+    } else {
+      drawWalkFrame(ctx, ART.dadWalk, dFrame, px, bodyY + CELL_SIZE * 0.52, CELL_SIZE * 1.45, g.face);
+    }
     
     // Star sparkle at the wand tip (top-left of the sprite)
     const tipX = px - CELL_SIZE * 0.42;
@@ -6728,7 +6827,8 @@ document.addEventListener('keydown', (e) => {
     case 'k': case 'K': moveDad(0, 1); e.preventDefault(); break;
     case 'j': case 'J': moveDad(-1, 0); e.preventDefault(); break;
     case 'l': case 'L': moveDad(1, 0); e.preventDefault(); break;
-    case 'u': case 'U': dadZap(); e.preventDefault(); break;
+    case 'u': case 'U': if (!fireDadOrb(true)) dadZap(); e.preventDefault(); break;
+    case 'e': case 'E': case 'q': case 'Q': playerFireOrb(); e.preventDefault(); break;
   }
 });
 
@@ -6793,8 +6893,9 @@ canvas.addEventListener('touchend', (e) => {
     });
     const zap = dpad2.querySelector('.center');
     if (zap) {
-      zap.addEventListener('touchstart', e => { e.preventDefault(); dadZap(); }, {passive: false});
-      zap.addEventListener('click', dadZap);
+      const fire = () => { if (!fireDadOrb(true)) dadZap(); };
+      zap.addEventListener('touchstart', e => { e.preventDefault(); fire(); }, {passive: false});
+      zap.addEventListener('click', fire);
     }
   }
 
@@ -6843,6 +6944,165 @@ canvas.addEventListener('click', function tryFullscreen() {
     toggleFullscreen();
   }
 }, true);
+
+// ==================== DADDY'S LIGHT ORB ====================
+// A small glowing bolt he throws at monsters. Short cooldown, so it is his
+// everyday attack - the big cave-lighting spell stays on its long cooldown.
+let dadOrbs = [];
+let orbCooldown = 0;
+const ORB_COOLDOWN_MS = 2200;
+const ORB_SPEED = 0.30;        // cells per frame
+const ORB_RANGE = 6;           // cells
+
+function nearestMonster(fromX, fromY, maxDist) {
+  let best = null, bestD = Infinity;
+  for (const z of zombies) {
+    if (!z.alive) continue;
+    const d = Math.hypot(z.x - fromX, z.y - fromY);
+    if (d < bestD && d <= maxDist) { bestD = d; best = z; }
+  }
+  return best;
+}
+
+let dadCastUntil = 0;   // show the casting pose until this moment
+function fireDadOrb(force) {
+  if (!daddyCompanion) return false;
+  if (gameState !== 'playing' && gameState !== 'escape') return false;
+  if (Date.now() < orbCooldown) return false;
+
+  const ox = daddyCompanion.displayX, oy = daddyCompanion.displayY;
+  const target = nearestMonster(ox, oy, ORB_RANGE);
+  if (!target && !force) return false;
+
+  let ang;
+  if (target) ang = Math.atan2(target.y - oy, target.x - ox);
+  else ang = (gait.dad.face >= 0) ? 0 : Math.PI;
+
+  orbCooldown = Date.now() + ORB_COOLDOWN_MS;
+  dadCastUntil = Date.now() + 620;
+  dadOrbs.push({ x: ox, y: oy - 0.35, vx: Math.cos(ang) * ORB_SPEED, vy: Math.sin(ang) * ORB_SPEED, life: 70 });
+  daddyCompanion.mode = 'wand';
+  wandRaise = { frames: 0 };
+  sfxMagic();
+  setTimeout(() => {
+    if (daddyCompanion && daddyCompanion.mode === 'wand' && magicLightTimer <= 0 && !rescueActive) {
+      daddyCompanion.mode = 'follow';
+      wandRaise = null;
+    }
+  }, 550);
+  return true;
+}
+
+function updateDadOrbs() {
+  for (let i = dadOrbs.length - 1; i >= 0; i--) {
+    const o = dadOrbs[i];
+    o.x += o.vx; o.y += o.vy; o.life--;
+    const cx = Math.round(o.x), cy = Math.round(o.y);
+    // Stopped by walls
+    if (!maze[cy] || maze[cy][cx] === undefined || maze[cy][cx] === 1 || o.life <= 0) {
+      orbBurst(o.x, o.y, false);
+      dadOrbs.splice(i, 1);
+      continue;
+    }
+    // Hit a monster
+    for (const z of zombies) {
+      if (!z.alive) continue;
+      if (Math.hypot(z.x - o.x, z.y - o.y) < 0.7) {
+        z.hitCount++;
+        z.hurtUntil = Date.now() + 900;
+        z.moveTimer = -ZOMBIE_MOVE_INTERVAL * 2;
+        addShake(6);
+        addHitStop(60);
+        orbBurst(o.x, o.y, true);
+        if (z.hitCount >= 2) {
+          swordSlash = { frames: 0, targetZombieId: z.id, x: z.x, y: z.y };
+          leahInvincible = Math.max(leahInvincible, 30);
+          sfxZombieZap();
+          showToast(t('toastZombieZap'));
+        } else {
+          sfxZombieHit();
+        }
+        dadOrbs.splice(i, 1);
+        break;
+      }
+    }
+  }
+}
+
+let orbBursts = [];   // sprite-based explosions
+let orbSparks = [];
+function orbBurst(x, y, hit) {
+  if (ART.burst) {
+    orbBursts.push({ x, y, t: 0, scale: hit ? 1.35 : 0.85 });
+    if (!hit) return;   // a wall puff needs no extra sparks
+  }
+  const n = hit ? 10 : 5;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2;
+    orbSparks.push({ x, y, vx: Math.cos(a) * 0.05, vy: Math.sin(a) * 0.05, life: 1, hit });
+  }
+}
+
+function drawDadOrbs() {
+  // Explosion frames: additive blending makes the black background vanish
+  if (ART.burst) {
+    const fw = ART.burst.width / 5;
+    for (let i = orbBursts.length - 1; i >= 0; i--) {
+      const e = orbBursts[i];
+      e.t += 0.14;
+      const f = Math.floor(e.t);
+      if (f > 4) { orbBursts.splice(i, 1); continue; }
+      const px = e.x * CELL_SIZE + CELL_SIZE / 2;
+      const py = e.y * CELL_SIZE + CELL_SIZE / 2;
+      const sz = CELL_SIZE * 2.1 * e.scale;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.drawImage(ART.burst, f * fw, 0, fw, ART.burst.height,
+                    px - sz / 2, py - sz / 2, sz, sz);
+      ctx.restore();
+    }
+  }
+  // Travelling bolts
+  for (const o of dadOrbs) {
+    const px = o.x * CELL_SIZE + CELL_SIZE / 2;
+    const py = o.y * CELL_SIZE + CELL_SIZE / 2;
+    const pulse = 0.8 + Math.sin(Date.now() / 60) * 0.2;
+    const r = CELL_SIZE * 0.42 * pulse;
+    const g = ctx.createRadialGradient(px, py, 0, px, py, r);
+    g.addColorStop(0, 'rgba(255,255,235,0.98)');
+    g.addColorStop(0.35, 'rgba(255,214,120,0.75)');
+    g.addColorStop(1, 'rgba(255,150,40,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill();
+    // Comet tail
+    ctx.strokeStyle = 'rgba(255,200,110,0.5)';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(px, py);
+    ctx.lineTo(px - o.vx * CELL_SIZE * 2.4, py - o.vy * CELL_SIZE * 2.4);
+    ctx.stroke();
+  }
+  // Impact sparks
+  for (let i = orbSparks.length - 1; i >= 0; i--) {
+    const s = orbSparks[i];
+    s.x += s.vx; s.y += s.vy; s.life -= 0.06;
+    if (s.life <= 0) { orbSparks.splice(i, 1); continue; }
+    const px = s.x * CELL_SIZE + CELL_SIZE / 2;
+    const py = s.y * CELL_SIZE + CELL_SIZE / 2;
+    ctx.fillStyle = s.hit
+      ? `rgba(255, 235, 150, ${s.life})`
+      : `rgba(255, 190, 90, ${s.life * 0.7})`;
+    ctx.beginPath(); ctx.arc(px, py, 2.6 * s.life + 0.6, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+// Tapping the bolt button always fires, even with no monster in range
+function playerFireOrb() {
+  const ok = fireDadOrb(true);
+  const b = document.getElementById('orbBtn');
+  if (!ok && b) { b.style.transform = 'scale(0.86)'; setTimeout(() => b.style.transform = '', 120); }
+}
 
 // ==================== CO-OP: player 2 drives Daddy ====================
 let coopMode = false;
@@ -6982,6 +7242,33 @@ function openBook() {
 }
 function closeBook() { sfxClick(); document.getElementById('bookModal').classList.remove('active'); }
 
+// ==================== LOADING SCREEN ====================
+(function splashLoader() {
+  const total = Object.keys(ART_FILES).length + Object.keys(WALK_FILES).length;
+  let done = 0;
+  const bar = () => {
+    const el = document.querySelector('#splashBar i');
+    if (el) el.style.width = Math.round((done / total) * 100) + '%';
+  };
+  const finish = () => {
+    const g = document.getElementById('splashGate');
+    if (!g || g.classList.contains('done')) return;
+    g.classList.add('done');
+    setTimeout(() => g.remove(), 600);
+  };
+  const tick = () => { done++; bar(); if (done >= total) setTimeout(finish, 250); };
+  // ART entries resolve by setting ART[key]; poll briefly rather than rewire the loaders
+  let last = 0;
+  const poll = setInterval(() => {
+    const n = Object.keys(ART).length;
+    while (last < n) { last++; tick(); }
+    if (done >= total) clearInterval(poll);
+  }, 100);
+  // Never trap the player if a file 404s
+  setTimeout(() => { clearInterval(poll); finish(); }, 6000);
+  window.addEventListener('load', () => setTimeout(() => { if (Object.keys(ART).length >= total) finish(); }, 300));
+})();
+
 // ==================== PWA ====================
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -7047,6 +7334,10 @@ function restartGame() {
   
   runHits = 0;
   runStartTime = Date.now();
+  dadOrbs = [];
+  orbSparks = [];
+  orbBursts = [];
+  orbCooldown = 0;
   
   document.getElementById('timer').textContent = '--:--';
   document.getElementById('timer').classList.remove('timer-warning');
