@@ -695,15 +695,60 @@ const RESCUE_THRESHOLD = 90; // Daddy Phone rescues at 90s left
 // silently falls back to the original hand-drawn characters.
 const ART = {};
 const ART_FILES = {
-  leah: 'art-leah.png',
-  dad:  'art-dad.png',
-  mom:  'art-mom.png'
+  mom:   'art-mom.png',
+  floor: 'art-floor.jpg',
+  wall:  'art-wall.jpg'
 };
+// Walk-cycle strips: one row of 4 frames each
+const WALK_FILES = { leah: 'art-leah-walk.png', dad: 'art-dad-walk.png', mon: 'art-mon-walk.png' };
+const WALK_FRAMES = 4;
 for (const key in ART_FILES) {
   const im = new Image();
   im.onload = () => { ART[key] = im; };
   im.onerror = () => { ART[key] = null; };
   im.src = ART_FILES[key];
+}
+for (const key in WALK_FILES) {
+  const im = new Image();
+  im.onload = () => {
+    im.fw = im.width / WALK_FRAMES;
+    ART[key + 'Walk'] = im;
+    if (key === 'leah' || key === 'dad') ART[key] = im; // frame 0 doubles as the still pose
+  };
+  im.onerror = () => { ART[key + 'Walk'] = null; };
+  im.src = WALK_FILES[key];
+}
+
+// Draw one frame of a walk strip, centred on cx with feet at footY.
+// facing < 0 mirrors the sprite so the character turns around.
+function drawWalkFrame(c, strip, frame, cx, footY, height, facing) {
+  const fw = strip.fw || strip.width / WALK_FRAMES;
+  const w = fw * height / strip.height;
+  const sx = (((frame % WALK_FRAMES) + WALK_FRAMES) % WALK_FRAMES) * fw;
+  c.save();
+  c.translate(cx, footY);
+  if (facing < 0) c.scale(-1, 1);
+  c.drawImage(strip, sx, 0, fw, strip.height, -w / 2, -height, w, height);
+  c.restore();
+}
+
+// Walk state: the frame advances with DISTANCE moved, so feet match the steps
+const gait = {
+  leah: { phase: 0, face: 1, lx: null, ly: null },
+  dad:  { phase: 0, face: 1, lx: null, ly: null }
+};
+const STRIDE = 0.42; // cells travelled per animation frame
+function stepGait(g, x, y) {
+  if (g.lx === null) { g.lx = x; g.ly = y; return false; }
+  const dx = x - g.lx, dy = y - g.ly;
+  const d = Math.hypot(dx, dy);
+  g.lx = x; g.ly = y;
+  if (d > 0.004) {
+    g.phase += d;
+    if (Math.abs(dx) > 0.004) g.face = dx > 0 ? 1 : -1;
+    return true;
+  }
+  return false;
 }
 // Draw a sprite centred horizontally on (cx) with its FEET at (footY)
 function drawSprite(c, img, cx, footY, height) {
@@ -2908,7 +2953,30 @@ function draw() {
       const px = x * CELL_SIZE;
       const py = y * CELL_SIZE;
       
-      if (cell === 1) {
+      // Photo-real cave tiles when the textures are available
+      if (ART.wall && ART.floor) {
+        const tex = cell === 1 ? ART.wall : ART.floor;
+        // Rotate some cells so the repetition is not obvious
+        const rot = ((x * 7 + y * 13) % 4) * Math.PI / 2;
+        ctx.save();
+        ctx.translate(px + CELL_SIZE / 2, py + CELL_SIZE / 2);
+        ctx.rotate(rot);
+        ctx.drawImage(tex, -CELL_SIZE / 2 - 0.5, -CELL_SIZE / 2 - 0.5, CELL_SIZE + 1, CELL_SIZE + 1);
+        ctx.restore();
+        if (cell === 1) {
+          // Walls sit deep in shadow so the corridors read clearly
+          ctx.fillStyle = 'rgba(4, 2, 0, 0.60)';
+          ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
+          ctx.fillStyle = 'rgba(40, 70, 120, 0.10)';
+          ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
+        } else {
+          // Walkable floor stays brighter and torch-warm
+          ctx.fillStyle = 'rgba(25, 10, 0, 0.12)';
+          ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
+          ctx.fillStyle = 'rgba(255, 180, 90, 0.10)';
+          ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
+        }
+      } else if (cell === 1) {
         // Rocky cave wall with realistic stone texture
         // Base layer - dark stone
         const gradient = ctx.createLinearGradient(px, py, px + CELL_SIZE, py + CELL_SIZE);
@@ -2963,7 +3031,7 @@ function draw() {
         // Bottom shadow
         ctx.fillStyle = 'rgba(0,0,0,0.25)';
         ctx.fillRect(px, py + CELL_SIZE - 4, CELL_SIZE, 4);
-      } else {
+      } else if (!(ART.wall && ART.floor)) {
         // Cave floor - dirt/sand with subtle gravel
         const fseed = (x * 53 + y * 89) % 100;
         const baseHue = 18 + (fseed % 6);
@@ -3090,9 +3158,20 @@ function drawLeah() {
                 CELL_SIZE * VISION_RADIUS * 2, CELL_SIZE * VISION_RADIUS * 2);
   
   // Disney-style sprite (falls back to the drawn version if art is missing)
-  if (ART.leah) {
-    const bob = Math.sin(Date.now() / 220) * 0.8;
-    drawSprite(ctx, ART.leah, px, py + CELL_SIZE * 0.52 + bob, CELL_SIZE * 1.35);
+  if (ART.leahWalk) {
+    const g = gait.leah;
+    const moving = stepGait(g, player.displayX, player.displayY);
+    const frame = moving ? Math.floor(g.phase / STRIDE) : 0;
+    // Idle breathing; while walking the body dips on each footfall
+    const bob = moving
+      ? Math.abs(Math.sin((g.phase / STRIDE) * Math.PI)) * -1.1
+      : Math.sin(Date.now() / 420) * 0.7;
+    // Contact shadow so she reads as standing ON the floor
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
+    ctx.beginPath();
+    ctx.ellipse(px, py + CELL_SIZE * 0.5, CELL_SIZE * 0.26, CELL_SIZE * 0.08, 0, 0, Math.PI * 2);
+    ctx.fill();
+    drawWalkFrame(ctx, ART.leahWalk, frame, px, py + CELL_SIZE * 0.52 + bob, CELL_SIZE * 1.35, g.face);
     if (leahInvincible > 0) {
       ctx.globalAlpha = (Math.sin(Date.now() / 60) + 1) / 2 * 0.6;
       ctx.strokeStyle = '#ff3030';
@@ -3446,6 +3525,38 @@ function drawZombie(z) {
   const py = z.displayY * CELL_SIZE + CELL_SIZE / 2;
   const size = CELL_SIZE * 0.65;
   
+  // Peb the cave monster - animated sprite (falls back to the drawn version)
+  if (ART.monWalk && z.alive) {
+    if (z.gait === undefined) z.gait = { phase: 0, face: 1, lx: null, ly: null };
+    const moving = stepGait(z.gait, z.displayX, z.displayY);
+    const frame = moving ? Math.floor(z.gait.phase / STRIDE) : 0;
+    const waddle = moving ? Math.sin((z.gait.phase / STRIDE) * Math.PI) * 0.09 : 0;
+    const bob = moving
+      ? Math.abs(Math.sin((z.gait.phase / STRIDE) * Math.PI)) * -1.0
+      : Math.sin(Date.now() / 380 + z.id) * 0.8;
+    
+    ctx.save();
+    if (leahInvincible > 0 && z.hitCount > 0) ctx.globalAlpha = 0.75;
+    // Contact shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(px, py + CELL_SIZE * 0.44, CELL_SIZE * 0.24, CELL_SIZE * 0.075, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Cyan crystal glow on its back
+    const gl = ctx.createRadialGradient(px, py, 0, px, py, CELL_SIZE * 0.7);
+    gl.addColorStop(0, 'rgba(90, 230, 255, 0.30)');
+    gl.addColorStop(1, 'rgba(90, 230, 255, 0)');
+    ctx.fillStyle = gl;
+    ctx.fillRect(px - CELL_SIZE * 0.7, py - CELL_SIZE * 0.7, CELL_SIZE * 1.4, CELL_SIZE * 1.4);
+    // Waddle: rock side to side as it steps
+    ctx.translate(px, py + CELL_SIZE * 0.46);
+    ctx.rotate(waddle);
+    ctx.translate(-px, -(py + CELL_SIZE * 0.46));
+    drawWalkFrame(ctx, ART.monWalk, frame, px, py + CELL_SIZE * 0.46 + bob, CELL_SIZE * 1.05, z.gait.face);
+    ctx.restore();
+    return;
+  }
+  
   // If dead/dying, draw fade-out effect
   if (!z.alive) {
     const fade = 1 - z.deathTimer / 60;
@@ -3697,7 +3808,7 @@ function drawDaddyCompanion() {
   const bodyY = py - walkBob;
   
   // Disney-style wizard sprite (falls back to the drawn version if art is missing)
-  if (ART.dad) {
+  if (ART.dadWalk) {
     // Soft magic aura, brighter while the wand is raised
     const auraStrength = (dc.mode === 'wand' || magicLightTimer > 0) ? 0.55 : 0.22;
     const aura = ctx.createRadialGradient(px, py, 0, px, py, CELL_SIZE * 1.1);
@@ -3706,7 +3817,14 @@ function drawDaddyCompanion() {
     ctx.fillStyle = aura;
     ctx.fillRect(px - CELL_SIZE * 1.1, py - CELL_SIZE * 1.1, CELL_SIZE * 2.2, CELL_SIZE * 2.2);
     
-    drawSprite(ctx, ART.dad, px, bodyY + CELL_SIZE * 0.52, CELL_SIZE * 1.45);
+    const g = gait.dad;
+    const gMoving = stepGait(g, dc.displayX, dc.displayY);
+    const dFrame = gMoving ? Math.floor(g.phase / STRIDE) : 0;
+    ctx.fillStyle = 'rgba(0,0,0,0.24)';
+    ctx.beginPath();
+    ctx.ellipse(px, py + CELL_SIZE * 0.5, CELL_SIZE * 0.26, CELL_SIZE * 0.08, 0, 0, Math.PI * 2);
+    ctx.fill();
+    drawWalkFrame(ctx, ART.dadWalk, dFrame, px, bodyY + CELL_SIZE * 0.52, CELL_SIZE * 1.45, g.face);
     
     // Star sparkle at the wand tip (top-left of the sprite)
     const tipX = px - CELL_SIZE * 0.42;
@@ -5282,12 +5400,12 @@ function drawRainbowHeart() {
     const s = scale;
     
     // Disney-style sprite (falls back to the drawn version if art is missing)
-    if (ART.leah) {
+    if (ART.leahWalk) {
       wctx.fillStyle = 'rgba(0,0,0,0.18)';
       wctx.beginPath();
       wctx.ellipse(cx, cy + 30*s, 16*s, 4*s, 0, 0, Math.PI * 2);
       wctx.fill();
-      drawSprite(wctx, ART.leah, cx, cy + 30*s, 72*s);
+      drawWalkFrame(wctx, ART.leahWalk, 1, cx, cy + 30*s, 72*s, 1);
       wctx.restore();
       return;
     }
@@ -5591,7 +5709,7 @@ function drawRainbowHeart() {
     const s = scale;
     
     // Disney-style sprite (falls back to the drawn version if art is missing)
-    if (ART.dad) {
+    if (ART.dadWalk) {
       wctx.fillStyle = 'rgba(0,0,0,0.18)';
       wctx.beginPath();
       wctx.ellipse(cx, cy + 47*s, 16*s, 4*s, 0, 0, Math.PI * 2);
@@ -5601,7 +5719,7 @@ function drawRainbowHeart() {
       aura.addColorStop(1, 'rgba(150,120,255,0)');
       wctx.fillStyle = aura;
       wctx.fillRect(cx - 45*s, cy - 35*s, 90*s, 90*s);
-      drawSprite(wctx, ART.dad, cx, cy + 47*s, 100*s);
+      drawWalkFrame(wctx, ART.dadWalk, 2, cx, cy + 47*s, 100*s, 1);
       wctx.restore();
       return;
     }
