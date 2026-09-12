@@ -619,7 +619,7 @@
 <div class="modal" id="introModal">
   <div class="modal-content">
     <h2 id="introTitle">🌟 Leah's Adventure 🌟</h2>
-    <img id="introArt" src="art-family.jpg" alt=""
+    <img id="introArt" src="art-title.jpg" alt=""
          onerror="this.style.display='none'"
          style="width:100%; max-width:460px; border-radius:16px; margin:6px auto 10px; display:block; box-shadow:0 6px 18px rgba(0,0,0,0.25);">
     <div class="story-text" id="introStory">
@@ -697,8 +697,12 @@ const ART = {};
 const ART_FILES = {
   mom:   'art-mom.png',
   floor: 'art-floor.jpg',
-  wall:  'art-wall.jpg'
+  wall:  'art-wall.jpg',
+  items: 'art-items.png',   // 3 collectibles in one row: gem, cloth, star
+  plush: 'art-plush.png',   // level 3 reward
+  hurt:  'art-mon-hurt.png' // Peb's startled face
 };
+const ITEM_INDEX = { gem: 0, cloth: 1, star: 2 };
 // Walk-cycle strips: one row of 4 frames each
 const WALK_FILES = { leah: 'art-leah-walk.png', dad: 'art-dad-walk.png', mon: 'art-mon-walk.png' };
 const WALK_FRAMES = 4;
@@ -2112,6 +2116,75 @@ let cameraX = 0, cameraY = 0;
 let particles = [];
 let shakeAmount = 0;
 
+// === IMPACT FEEL ===
+let hitStopUntil = 0;      // freeze the world briefly on a solid hit
+let impactShake = 0;       // decaying screen shake from hits
+let dust = [];             // footfall puffs
+
+function addHitStop(ms) { hitStopUntil = Math.max(hitStopUntil, Date.now() + ms); }
+function addShake(amount) { impactShake = Math.max(impactShake, amount); }
+
+function addDust(wx, wy, dir) {
+  for (let i = 0; i < 4; i++) {
+    dust.push({
+      x: wx + (Math.random() - 0.5) * CELL_SIZE * 0.25,
+      y: wy,
+      vx: (Math.random() - 0.5) * 0.5 - dir * 0.25,
+      vy: -Math.random() * 0.35 - 0.1,
+      life: 1,
+      r: 1.5 + Math.random() * 2.2
+    });
+  }
+  if (dust.length > 90) dust.splice(0, dust.length - 90);
+}
+
+function updateAndDrawDust() {
+  for (let i = dust.length - 1; i >= 0; i--) {
+    const d = dust[i];
+    d.x += d.vx; d.y += d.vy;
+    d.vy += 0.022;          // settles back down
+    d.life -= 0.035;
+    if (d.life <= 0) { dust.splice(i, 1); continue; }
+    ctx.fillStyle = `rgba(196, 170, 132, ${d.life * 0.42})`;
+    ctx.beginPath();
+    ctx.arc(d.x, d.y, d.r * (1.6 - d.life), 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// === LEVEL PROGRESS (survives closing the tab) ===
+const SAVE_KEY = 'leahCaveProgress';
+function saveProgress() {
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify({ level: currentLevel })); } catch (e) {}
+}
+function loadProgress() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return 1;
+    const lv = JSON.parse(raw).level;
+    return (lv === 1 || lv === 2 || lv === 3) ? lv : 1;
+  } catch (e) { return 1; }
+}
+function clearProgress() { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} }
+
+// === SCREEN FADE between levels ===
+let fadeAlpha = 0;
+function fadeOut(ms, then) {
+  const t0 = Date.now();
+  (function step() {
+    fadeAlpha = Math.min(1, (Date.now() - t0) / ms);
+    if (fadeAlpha < 1) requestAnimationFrame(step);
+    else { then && then(); fadeIn(ms); }
+  })();
+}
+function fadeIn(ms) {
+  const t0 = Date.now();
+  (function step() {
+    fadeAlpha = Math.max(0, 1 - (Date.now() - t0) / ms);
+    if (fadeAlpha > 0) requestAnimationFrame(step);
+  })();
+}
+
 // ===== QUESTION POOL SYSTEM =====
 // Tracks which questions have been used across games.
 // Persists across game restarts. Only resets when ALL questions have been used.
@@ -2180,6 +2253,10 @@ let zombies = []; // { id, x, y, displayX, displayY, hitCount, moveTimer, dir, a
 let leahInvincible = 0; // frames of invincibility after zombie hit
 let leahKnockback = null; // { dx, dy, frames }
 let phoneAttack = null; // { fromX, fromY, toX, toY, frames, targetZombieId }
+// Level 1 has no monsters at all so a young player can learn to move and
+// answer questions first; they arrive in level 2 and ramp up in level 3.
+const ZOMBIE_COUNT_BY_LEVEL = { 1: 0, 2: 2, 3: 3 };
+const ZOMBIE_SPEED_BY_LEVEL = { 1: 200, 2: 170, 3: 130 }; // frames per step (higher = slower)
 const ZOMBIE_COUNT = 3;
 const ZOMBIE_MOVE_INTERVAL = 130; // frames between zombie moves (very slow - easy mode)
 const INVINCIBLE_FRAMES = 90; // ~1.5s at 60fps
@@ -2279,7 +2356,8 @@ function generateMaze() {
     const j = Math.floor(Math.random() * (i + 1));
     [zombieCells[i], zombieCells[j]] = [zombieCells[j], zombieCells[i]];
   }
-  for (let i = 0; i < ZOMBIE_COUNT && i < zombieCells.length; i++) {
+  const zCount = ZOMBIE_COUNT_BY_LEVEL[currentLevel] ?? ZOMBIE_COUNT;
+  for (let i = 0; i < zCount && i < zombieCells.length; i++) {
     const c = zombieCells[i];
     zombies.push({
       id: i,
@@ -2349,7 +2427,7 @@ function updateZombies() {
     }
     
     z.moveTimer++;
-    if (z.moveTimer < ZOMBIE_MOVE_INTERVAL) return;
+    if (z.moveTimer < (ZOMBIE_SPEED_BY_LEVEL[currentLevel] ?? ZOMBIE_MOVE_INTERVAL)) return;
     z.moveTimer = 0;
     
     // Try to move in current direction; if blocked, pick a new random direction
@@ -2499,6 +2577,8 @@ function handleZombieCollision(zombie) {
       y: zombie.y
     };
     
+    addHitStop(110);
+    addShake(11);
     sfxZombieZap();
     showToast(t('toastZombieZap'));
   }
@@ -2885,14 +2965,16 @@ function draw() {
     return;
   }
   
-  player.displayX += (player.x - player.displayX) * 0.18;
-  player.displayY += (player.y - player.displayY) * 0.18;
+  const frozen = Date.now() < hitStopUntil;
+  if (!frozen) {
+    player.displayX += (player.x - player.displayX) * 0.18;
+    player.displayY += (player.y - player.displayY) * 0.18;
+  }
   
   updateCamera();
   
   if (rescueActive) updateRescuePath();
-  updateZombies();
-  updateDaddyCompanion();
+  if (!frozen) { updateZombies(); updateDaddyCompanion(); }
   
   let shakeX = 0, shakeY = 0;
   if (gameState === 'escape' && escapeTimeLeft < 60) {
@@ -2900,6 +2982,12 @@ function draw() {
     shakeX = (Math.random() - 0.5) * shakeAmount;
     shakeY = (Math.random() - 0.5) * shakeAmount;
   }
+  // Impact shake from landing a hit, decaying fast
+  if (impactShake > 0.05) {
+    shakeX += (Math.random() - 0.5) * impactShake;
+    shakeY += (Math.random() - 0.5) * impactShake;
+    impactShake *= 0.86;
+  } else impactShake = 0;
   
   ctx.save();
   // Zoom transform: the world point at (cameraX + effectiveViewW/2, cameraY + effectiveViewH/2)
@@ -3111,6 +3199,7 @@ function draw() {
   if (daddyCompanion) drawDaddyCompanion();
   
   // Draw sword slash effect
+  updateAndDrawDust();
   if (swordSlash) drawSwordSlash();
   if (leahAttack) drawLeahAttack();
   
@@ -3136,6 +3225,10 @@ function draw() {
   drawFogOfWar();
   
   // Add magic shimmer overlay when active
+  if (fadeAlpha > 0) {
+    ctx.fillStyle = `rgba(0,0,0,${fadeAlpha})`;
+    ctx.fillRect(0, 0, VIEW_WIDTH, VIEW_HEIGHT);
+  }
   if (magicLightTimer > 0) {
     drawMagicLightEffect();
   }
@@ -3159,9 +3252,16 @@ function drawLeah() {
   
   // Disney-style sprite (falls back to the drawn version if art is missing)
   if (ART.leahWalk) {
+    // While swinging, drawLeahLunge() renders her instead - don't draw twice
+    if (leahAttack) return;
     const g = gait.leah;
     const moving = stepGait(g, player.displayX, player.displayY);
     const frame = moving ? Math.floor(g.phase / STRIDE) : 0;
+    // A puff of dust every time a foot lands
+    if (moving && frame !== g.lastFrame) {
+      g.lastFrame = frame;
+      if (frame % 2 === 0) addDust(px, py + CELL_SIZE * 0.5, g.face);
+    }
     // Idle breathing; while walking the body dips on each footfall
     const bob = moving
       ? Math.abs(Math.sin((g.phase / STRIDE) * Math.PI)) * -1.1
@@ -3280,6 +3380,22 @@ function drawLeah() {
 
 function drawCollectible(cx, cy, seed) {
   const type = LEVEL_SIZES[currentLevel].collectible;
+  if (ART.items) {
+    const t = Date.now() / 1000;
+    const fw = ART.items.width / 3;
+    const idx = ITEM_INDEX[type] ?? 0;
+    const float = Math.sin(t * 2 + seed) * 2.2;
+    const size = CELL_SIZE * 0.72;
+    const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, size);
+    const tint = type === 'gem' ? '140,200,255' : type === 'cloth' ? '120,160,255' : '255,215,90';
+    glow.addColorStop(0, `rgba(${tint},${0.34 + Math.sin(t * 3 + seed) * 0.10})`);
+    glow.addColorStop(1, `rgba(${tint},0)`);
+    ctx.fillStyle = glow;
+    ctx.fillRect(cx - size, cy - size, size * 2, size * 2);
+    ctx.drawImage(ART.items, idx * fw, 0, fw, ART.items.height,
+                  cx - size / 2, cy - size / 2 + float, size, size);
+    return;
+  }
   if (type === 'gem') drawDiamondGem(cx, cy, seed);
   else if (type === 'cloth') drawClothPiece(cx, cy, seed);
   else if (type === 'star') drawStarCollectible(cx, cy, seed);
@@ -3530,6 +3646,7 @@ function drawZombie(z) {
     if (z.gait === undefined) z.gait = { phase: 0, face: 1, lx: null, ly: null };
     const moving = stepGait(z.gait, z.displayX, z.displayY);
     const frame = moving ? Math.floor(z.gait.phase / STRIDE) : 0;
+    const hurt = ART.hurt && z.hurtUntil && Date.now() < z.hurtUntil;
     const waddle = moving ? Math.sin((z.gait.phase / STRIDE) * Math.PI) * 0.09 : 0;
     const bob = moving
       ? Math.abs(Math.sin((z.gait.phase / STRIDE) * Math.PI)) * -1.0
@@ -3552,7 +3669,13 @@ function drawZombie(z) {
     ctx.translate(px, py + CELL_SIZE * 0.46);
     ctx.rotate(waddle);
     ctx.translate(-px, -(py + CELL_SIZE * 0.46));
-    drawWalkFrame(ctx, ART.monWalk, frame, px, py + CELL_SIZE * 0.46 + bob, CELL_SIZE * 1.05, z.gait.face);
+    if (hurt) {
+      // Recoils away from Leah while startled
+      const rx = Math.sign(px - (player.displayX * CELL_SIZE + CELL_SIZE / 2)) * 1.6;
+      drawSprite(ctx, ART.hurt, px + rx, py + CELL_SIZE * 0.46, CELL_SIZE * 1.08);
+    } else {
+      drawWalkFrame(ctx, ART.monWalk, frame, px, py + CELL_SIZE * 0.46 + bob, CELL_SIZE * 1.05, z.gait.face);
+    }
     ctx.restore();
     return;
   }
@@ -4319,8 +4442,100 @@ function drawDaddySword() {
 
 
 
+function drawLeahLunge() {
+  const a = leahAttack;
+  const t = a.frames / 26;                 // 0 -> 1 over the swing
+  const dirX = a.dirX, dirY = a.dirY;
+  const ang = Math.atan2(dirY, dirX);
+  // Wind up back, then drive forward, then settle
+  const push = t < 0.22 ? -t / 0.22 * 0.18
+             : t < 0.48 ? ((t - 0.22) / 0.26) * 0.62 - 0.18
+             : (1 - (t - 0.48) / 0.52) * 0.44;
+  const px = player.displayX * CELL_SIZE + CELL_SIZE / 2 + Math.cos(ang) * CELL_SIZE * push;
+  const py = player.displayY * CELL_SIZE + CELL_SIZE / 2 + Math.sin(ang) * CELL_SIZE * push;
+  const lean = push * 0.55 * (dirX >= 0 ? 1 : -1);
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.26)';
+  ctx.beginPath();
+  ctx.ellipse(px, py + CELL_SIZE * 0.5, CELL_SIZE * 0.26, CELL_SIZE * 0.08, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Body tilts into the swing
+  ctx.translate(px, py + CELL_SIZE * 0.5);
+  ctx.rotate(lean);
+  ctx.translate(-px, -(py + CELL_SIZE * 0.5));
+  const face = dirX !== 0 ? (dirX > 0 ? 1 : -1) : gait.leah.face;
+  drawWalkFrame(ctx, ART.leahWalk, t < 0.48 ? 2 : 0, px, py + CELL_SIZE * 0.52, CELL_SIZE * 1.35, face);
+  ctx.restore();
+
+  // Lantern swings through an arc and leaves a light trail
+  if (t > 0.18 && t < 0.72) {
+    const k = (t - 0.18) / 0.54;
+    const sweep = -0.9 + k * 1.9;
+    const r = CELL_SIZE * 0.62;
+    ctx.save();
+    ctx.strokeStyle = `rgba(255, 214, 120, ${0.75 * (1 - k)})`;
+    ctx.lineWidth = 5 - k * 3;
+    ctx.lineCap = 'round';
+    ctx.shadowColor = '#ffcc55';
+    ctx.shadowBlur = 14;
+    ctx.beginPath();
+    ctx.arc(px, py, r, ang + sweep - 0.55, ang + sweep + 0.12);
+    ctx.stroke();
+    ctx.restore();
+    const lx = px + Math.cos(ang + sweep) * r;
+    const ly = py + Math.sin(ang + sweep) * r;
+    const lg = ctx.createRadialGradient(lx, ly, 0, lx, ly, 11);
+    lg.addColorStop(0, 'rgba(255,246,205,0.95)');
+    lg.addColorStop(1, 'rgba(255,190,60,0)');
+    ctx.fillStyle = lg;
+    ctx.beginPath(); ctx.arc(lx, ly, 11, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // Impact burst on the monster
+  if (a.hit && a.frames >= 6 && a.frames < 20) {
+    const k = (a.frames - 6) / 14;
+    const tx = px + Math.cos(ang) * CELL_SIZE * 0.85;
+    const ty = py + Math.sin(ang) * CELL_SIZE * 0.85;
+    ctx.save();
+    ctx.translate(tx, ty);
+    ctx.globalAlpha = 1 - k;
+    // Shockwave ring
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    ctx.lineWidth = 3 * (1 - k);
+    ctx.beginPath(); ctx.arc(0, 0, 6 + k * 26, 0, Math.PI * 2); ctx.stroke();
+    // Spark shards flying outward
+    for (let i = 0; i < 7; i++) {
+      const sa = ang + (i - 3) * 0.34;
+      const d0 = 6 + k * 24, d1 = d0 + 9 * (1 - k);
+      ctx.strokeStyle = `rgba(255, ${205 - i * 8}, 90, ${1 - k})`;
+      ctx.lineWidth = 2.4 * (1 - k);
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(sa) * d0, Math.sin(sa) * d0);
+      ctx.lineTo(Math.cos(sa) * d1, Math.sin(sa) * d1);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  if (leahInvincible > 0) {
+    ctx.globalAlpha = (Math.sin(Date.now() / 60) + 1) / 2 * 0.6;
+    ctx.strokeStyle = '#ff3030';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(px, py, CELL_SIZE * 0.6, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  leahAttack.frames++;
+  if (leahAttack.frames >= 26) leahAttack = null;
+}
+
 function drawLeahAttack() {
   if (!leahAttack) return;
+  // Real swing: Leah lunges toward the target, so the hit has weight
+  if (ART.leahWalk) { drawLeahLunge(); return; }
   
   const px = player.displayX * CELL_SIZE + CELL_SIZE / 2;
   const py = player.displayY * CELL_SIZE + CELL_SIZE / 2;
@@ -4776,6 +4991,15 @@ function attackZombie() {
   const dirY = target.y - player.y;
   leahAttack = { frames: 0, dirX, dirY, hit: true };
   
+  // Shove the monster back a step if the cell behind it is open
+  const kx = target.x + Math.sign(dirX), ky = target.y + Math.sign(dirY);
+  if (maze[ky] && maze[ky][kx] !== 1) { target.x = kx; target.y = ky; }
+  target.hurtUntil = Date.now() + 700;   // startled face
+  addHitStop(70);                        // the freeze that sells the impact
+  addShake(7);
+  addDust(target.displayX * CELL_SIZE + CELL_SIZE / 2,
+          target.displayY * CELL_SIZE + CELL_SIZE, Math.sign(dirX) || 1);
+
   if (target.hitCount === 1) {
     // First hit - knock zombie back and stun briefly
     target.moveTimer = -ZOMBIE_MOVE_INTERVAL; // stun (resets timer back)
@@ -4951,8 +5175,9 @@ function selectLanguage(lang) {
 function closeIntro() {
   sfxClick();
   document.getElementById('introModal').classList.remove('active');
-  // Always start at Level 1
-  setLevel(1);
+  // Resume the furthest level reached, so closing the tab does not lose progress
+  setLevel(loadProgress());
+  applyLevelBackdrop();
   gameState = 'playing';
   restartGame();
   updateHelpButton();
@@ -4962,18 +5187,22 @@ function closeIntro() {
 // Advance to next level after winning
 function nextLevel() {
   sfxClick();
-  if (currentLevel < 3) {
-    setLevel(currentLevel + 1);
-    document.querySelectorAll('.modal').forEach(m => m.classList.remove('active'));
+  document.querySelectorAll('.modal').forEach(m => m.classList.remove('active'));
+  const target = currentLevel < 3 ? currentLevel + 1 : 1;
+  if (target === 1) clearProgress(); else { currentLevel = target; saveProgress(); }
+  fadeOut(380, () => {
+    setLevel(target);
     restartGame();
+    applyLevelBackdrop();
     startBGM();
-  } else {
-    // Beat all levels - restart from level 1
-    setLevel(1);
-    document.querySelectorAll('.modal').forEach(m => m.classList.remove('active'));
-    restartGame();
-    startBGM();
-  }
+  });
+}
+
+// The page backdrop deepens as the caves get harder
+function applyLevelBackdrop() {
+  document.body.style.backgroundImage =
+    "linear-gradient(rgba(10,0,25,0.72), rgba(10,0,25,0.82)), url('" +
+    (currentLevel === 3 ? 'art-cave3.jpg' : 'art-cave.jpg') + "')";
 }
 
 function showEscapeMessage() {
@@ -5384,6 +5613,20 @@ function drawRainbowHeart() {
   
   // Draw the level-appropriate reward (heart for L1, cloth for L2, kuromi for L3)
   function drawReward(cx, cy, scale, alpha) {
+    if (currentLevel === 3 && ART.plush) {
+      wctx.save(); wctx.globalAlpha = alpha;
+      const h = 116 * scale, w = ART.plush.width * h / ART.plush.height;
+      wctx.shadowColor = 'rgba(190,150,255,0.9)'; wctx.shadowBlur = 26;
+      wctx.drawImage(ART.plush, cx - w / 2, cy - h / 2, w, h);
+      wctx.restore(); return;
+    }
+    if (currentLevel === 2 && ART.items) {
+      wctx.save(); wctx.globalAlpha = alpha;
+      const fw = ART.items.width / 3, sz = 124 * scale;
+      wctx.shadowColor = 'rgba(120,170,255,0.9)'; wctx.shadowBlur = 24;
+      wctx.drawImage(ART.items, fw, 0, fw, ART.items.height, cx - sz / 2, cy - sz / 2, sz, sz);
+      wctx.restore(); return;
+    }
     if (currentLevel === 1) {
       drawHeart(cx, cy, scale, alpha, wctx);
     } else if (currentLevel === 2) {
