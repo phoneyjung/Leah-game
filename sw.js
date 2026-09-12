@@ -25,6 +25,11 @@ const PRECACHE = [
   './art-dad-cast.png',
   './art-orb-burst.jpg',
   './art-splash.jpg',
+  './bgm-calm.mp3',
+  './bgm-escape.mp3',
+  './win1.mp4',
+  './win2.mp4',
+  './win3.mp4',
   './icon-192.png',
   './icon-512.png'
 ];

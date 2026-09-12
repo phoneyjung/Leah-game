@@ -253,6 +253,7 @@
       padding-bottom: 14px;
     }
     #winCanvas { max-height: 46vh !important; width: auto !important; }
+    #winVideo  { max-height: 46vh !important; width: auto !important; height: auto !important; }
     #introArt  { max-height: 32vh !important; width: auto !important; height: auto !important; }
     #introLogo { max-height: 14vh !important; width: auto !important; height: auto !important; }
     .modal-content h2 { font-size: 1.15em; margin: 2px 0; }
@@ -872,6 +873,8 @@
     <h2 id="winTitle">🎉 LEAH MADE IT! 🎉</h2>
     <p style="font-size: 1.1em;" id="winSub">Watch the gems become a Rainbow Heart for Mommy Pang...</p>
     <canvas id="winCanvas" width="400" height="320"></canvas>
+    <video id="winVideo" muted playsinline loop preload="none"
+           style="display:none; width:100%; max-width:460px; border-radius:16px; margin:6px auto; box-shadow:0 6px 18px rgba(0,0,0,0.28);"></video>
     <div id="winStars" style="font-size:2em; letter-spacing:6px; margin:6px 0;"></div>
     <div id="winStarInfo" style="font-size:0.8em; color:#777; margin-bottom:6px;"></div>
     <p id="winMessage" style="font-size: 1.2em; color: #c2185b; font-weight: bold;"></p>
@@ -1050,6 +1053,7 @@ function initAudio() {
 function toggleMute() {
   audioMuted = !audioMuted;
   if (masterGain) masterGain.gain.value = audioMuted ? 0 : 0.7;
+  applyMusicMute();
   const btn = document.getElementById('muteBtn');
   if (btn) btn.textContent = audioMuted ? '🔇' : '🔊';
 }
@@ -1322,7 +1326,66 @@ function sfxToast() {
 
 // ===== BACKGROUND MUSIC =====
 // Gentle cave theme - no drone hum, just soft melody and ambient drips
+// ==================== RECORDED SOUNDTRACK ====================
+// Two looping mp3s. If either file is missing the game falls straight back
+// to the synthesised score, so nothing breaks and the cave is never silent.
+const TRACKS = { calm: 'bgm-calm.mp3', escape: 'bgm-escape.mp3' };
+const music = {};
+let musicTrack = null;       // 'calm' | 'escape' | null
+const MUSIC_VOL = 0.55;
+
+for (const key in TRACKS) {
+  const el = new Audio();
+  el.src = TRACKS[key];
+  el.loop = true;
+  el.preload = 'auto';
+  el.volume = 0;
+  el.addEventListener('canplaythrough', () => { music[key] = el; }, { once: true });
+  el.addEventListener('error', () => { music[key] = null; });
+}
+
+function musicFade(el, to, ms, thenPause) {
+  if (!el) return;
+  const from = el.volume, t0 = Date.now();
+  (function step() {
+    const k = Math.min(1, (Date.now() - t0) / ms);
+    el.volume = Math.max(0, Math.min(1, from + (to - from) * k));
+    if (k < 1) requestAnimationFrame(step);
+    else if (thenPause) { el.pause(); el.currentTime = 0; }
+  })();
+}
+
+// Returns true if a recorded track took over, false to use the synth
+function playTrack(key) {
+  const el = music[key];
+  if (!el) return false;
+  if (musicTrack === key && !el.paused) return true;
+  // fade out whatever else is playing
+  for (const k in music) {
+    if (k !== key && music[k] && !music[k].paused) musicFade(music[k], 0, 900, true);
+  }
+  musicTrack = key;
+  el.volume = 0;
+  const p = el.play();
+  if (p && p.catch) p.catch(() => {});
+  musicFade(el, audioMuted ? 0 : MUSIC_VOL, 900);
+  return true;
+}
+
+function stopAllTracks() {
+  for (const k in music) if (music[k]) { music[k].pause(); music[k].currentTime = 0; music[k].volume = 0; }
+  musicTrack = null;
+}
+
+function applyMusicMute() {
+  for (const k in music) {
+    if (music[k]) music[k].volume = (audioMuted || k !== musicTrack) ? 0 : MUSIC_VOL;
+  }
+}
+
 function startBGM() {
+  // Recorded track wins; it also works before the audio context exists
+  if (playTrack('calm')) { stopSynthBGM(); return; }
   if (!audioCtx || bgmRunning) return;
   bgmRunning = true;
   
@@ -1383,6 +1446,11 @@ function startBGM() {
 }
 
 function stopBGM() {
+  stopAllTracks();
+  stopSynthBGM();
+}
+
+function stopSynthBGM() {
   bgmRunning = false;
   bgmNodes.forEach(n => {
     try { if (n.stop) n.stop(); } catch (e) {}
@@ -1393,6 +1461,7 @@ function stopBGM() {
 
 // EXCITING ESCAPE MUSIC - faster, dramatic minor key for cave collapsing
 function startEscapeBGM() {
+  if (playTrack('escape')) { stopSynthBGM(); return; }
   if (!audioCtx) return;
   stopBGM(); // stop calm music first
   bgmRunning = true;
@@ -5502,6 +5571,7 @@ function closeIntro() {
 // Advance to next level after winning
 function nextLevel() {
   sfxClick();
+  stopWinScene();
   document.querySelectorAll('.modal').forEach(m => m.classList.remove('active'));
   const target = currentLevel < 3 ? currentLevel + 1 : 1;
   if (target === 1) clearProgress(); else { currentLevel = target; saveProgress(); }
@@ -5598,7 +5668,7 @@ function winGame() {
   }
   
   document.getElementById('winModal').classList.add('active');
-  drawRainbowHeart();
+  showWinScene();
 }
 
 function loseGame(message) {
@@ -5612,6 +5682,51 @@ function loseGame(message) {
 }
 
 // ==================== RAINBOW HEART ANIMATION ====================
+// One short celebration clip per level. If a file is missing or the browser
+// refuses to play it, the hand-drawn animation runs instead.
+const WIN_CLIPS = { 1: 'win1.mp4', 2: 'win2.mp4', 3: 'win3.mp4' };
+
+function showWinScene() {
+  const vid = document.getElementById('winVideo');
+  const cav = document.getElementById('winCanvas');
+  const src = WIN_CLIPS[currentLevel];
+  if (!vid || !src) { useDrawnWinScene(); return; }
+
+  const fallback = () => {
+    vid.style.display = 'none';
+    vid.removeAttribute('src');
+    useDrawnWinScene();
+  };
+
+  vid.onerror = fallback;
+  vid.oncanplay = () => {
+    cav.style.display = 'none';
+    vid.style.display = 'block';
+  };
+  vid.src = src;
+  vid.currentTime = 0;
+  const pr = vid.play();
+  if (pr && pr.catch) pr.catch(fallback);
+  // If it has not started within 2.5s, do not leave the player staring at nothing
+  setTimeout(() => { if (vid.paused || !vid.videoWidth) fallback(); }, 2500);
+}
+
+function stopWinScene() {
+  const vid = document.getElementById('winVideo');
+  if (!vid) return;
+  try { vid.pause(); } catch (e) {}
+  vid.style.display = 'none';
+  vid.removeAttribute('src');
+  const cav = document.getElementById('winCanvas');
+  if (cav) cav.style.display = '';
+}
+
+function useDrawnWinScene() {
+  const cav = document.getElementById('winCanvas');
+  if (cav) cav.style.display = '';
+  drawRainbowHeart();
+}
+
 function drawRainbowHeart() {
   const winCanvas = document.getElementById('winCanvas');
   const wctx = winCanvas.getContext('2d');
@@ -7303,6 +7418,7 @@ function setLevel(level) {
 }
 
 function restartGame() {
+  stopWinScene();
   // Apply current level's dimensions
   const lvl = LEVEL_SIZES[currentLevel];
   COLS = lvl.cols;
