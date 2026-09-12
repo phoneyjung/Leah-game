@@ -17,6 +17,11 @@
   body {
     font-family: 'Comic Sans MS', 'Arial', sans-serif;
     background: linear-gradient(135deg, #0a0015 0%, #1a0033 50%, #0d0020 100%);
+    background-image:
+      linear-gradient(rgba(10, 0, 25, 0.72), rgba(10, 0, 25, 0.82)),
+      url('art-cave.jpg');
+    background-size: cover;
+    background-position: center;
     min-height: 100vh;
     display: flex;
     flex-direction: column;
@@ -589,7 +594,7 @@
   <div class="controls">
     <span id="controlsLine1">🎮 Arrow Keys / WASD to move | 📱 Tap buttons or swipe on mobile</span><br>
     <span id="controlsLine2">🔦 Leah only has a small lantern - she can only see what's near her!</span><br>
-    <span id="controlsLine3">📱✨ Call Daddy Phone to light up the WHOLE cave for 3 seconds! (2 min cooldown)</span>
+    <span id="controlsLine3">📱✨ Call Daddy Phone to light up the WHOLE cave for 10 seconds! (2 min cooldown)</span>
   </div>
 </div>
 
@@ -614,6 +619,9 @@
 <div class="modal" id="introModal">
   <div class="modal-content">
     <h2 id="introTitle">🌟 Leah's Adventure 🌟</h2>
+    <img id="introArt" src="art-family.jpg" alt=""
+         onerror="this.style.display='none'"
+         style="width:100%; max-width:460px; border-radius:16px; margin:6px auto 10px; display:block; box-shadow:0 6px 18px rgba(0,0,0,0.25);">
     <div class="story-text" id="introStory">
     </div>
     <button class="continue-btn" id="startBtn" onclick="closeIntro()">🚀 Start Adventure!</button>
@@ -681,6 +689,27 @@ const VISION_RADIUS = 4.5; // Slightly larger so player sees more around them
 const HELP_COOLDOWN = 120; // 2 minutes
 const HELP_DURATION = 10; // 10 seconds of full vision
 const RESCUE_THRESHOLD = 90; // Daddy Phone rescues at 90s left
+
+// ==================== ARTWORK (Disney-style sprites) ====================
+// Images live in img/ next to index.html. If any file is missing the game
+// silently falls back to the original hand-drawn characters.
+const ART = {};
+const ART_FILES = {
+  leah: 'art-leah.png',
+  dad:  'art-dad.png',
+  mom:  'art-mom.png'
+};
+for (const key in ART_FILES) {
+  const im = new Image();
+  im.onload = () => { ART[key] = im; };
+  im.onerror = () => { ART[key] = null; };
+  im.src = ART_FILES[key];
+}
+// Draw a sprite centred horizontally on (cx) with its FEET at (footY)
+function drawSprite(c, img, cx, footY, height) {
+  const w = img.width * height / img.height;
+  c.drawImage(img, cx - w / 2, footY - height, w, height);
+}
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
@@ -1204,7 +1233,7 @@ const I18N = {
     magicActive: "✨ Magic Active!",
     controls1: "🎮 Arrow Keys / WASD to move | 📱 Tap buttons or swipe on mobile",
     controls2: "🔦 Leah only has a small lantern - she can only see what's near her!",
-    controls3: "📱✨ Call Daddy Phone to light up the WHOLE cave for 3 seconds! (2 min cooldown)",
+    controls3: "📱✨ Call Daddy Phone to light up the WHOLE cave for 10 seconds! (2 min cooldown)",
     introTitle: "🌟 Leah's Adventure 🌟",
     introStory: `This is <b>Leah</b> 👧, a brave little girl.<br><br>
       Tomorrow is <b>Mommy Pang's</b> birthday! <span class="heart-icon">💖</span><br><br>
@@ -1215,7 +1244,7 @@ const I18N = {
       🎲 The cave has 320 different questions - never repeats until all used!<br>
       💡 Wrong answer? A new question appears at that spot - try again!<br><br>
       But don't worry! <b>Daddy Phone 📱✨</b> can help with magic!<br>
-      Tap the help button to light up the WHOLE cave for 3 seconds!<br>
+      Tap the help button to light up the WHOLE cave for 10 seconds!<br>
       (You can use it every 2 minutes)<br><br>
       And in the final escape, if Leah is in trouble,<br>
       Daddy Phone will come and guide her out! 💪💝<br><br>
@@ -1266,7 +1295,7 @@ const I18N = {
     magicActive: "✨ เวทมนต์ทำงาน!",
     controls1: "🎮 ใช้ปุ่มลูกศร/WASD ในการเดิน | 📱 มือถือกดปุ่มหรือปัด",
     controls2: "🔦 ลีอาห์มีแค่โคมไฟเล็กๆ มองเห็นแค่รอบตัวเท่านั้น!",
-    controls3: "📱✨ เรียกพ่อโฟนเปิดไฟทั่วถ้ำ 3 วินาที! (พัก 2 นาที)",
+    controls3: "📱✨ เรียกพ่อโฟนเปิดไฟทั่วถ้ำ 10 วินาที! (พัก 2 นาที)",
     introTitle: "🌟 การผจญภัยของลีอาห์ 🌟",
     introStory: `นี่คือ <b>ลีอาห์</b> 👧 เด็กผู้หญิงผู้กล้าหาญ<br><br>
       พรุ่งนี้คือวันเกิดของ <b>แม่แป้ง</b>! <span class="heart-icon">💖</span><br><br>
@@ -1277,7 +1306,7 @@ const I18N = {
       🎲 ถ้ำนี้มีคำถาม 320 ข้อ - ไม่ซ้ำจนกว่าจะใช้ครบ!<br>
       💡 ตอบผิด? คำถามใหม่จะมาแทน เดินกลับมาตอบใหม่ได้!<br><br>
       ไม่ต้องห่วง! <b>พ่อโฟน 📱✨</b> ช่วยด้วยเวทมนต์ได้!<br>
-      กดปุ่มขอความช่วยเหลือเพื่อเปิดไฟทั่วถ้ำ 3 วินาที!<br>
+      กดปุ่มขอความช่วยเหลือเพื่อเปิดไฟทั่วถ้ำ 10 วินาที!<br>
       (ใช้ได้ทุกๆ 2 นาที)<br><br>
       ตอนหนีออกจากถ้ำ ถ้าลีอาห์ลำบาก<br>
       พ่อโฟนจะมานำทางออกให้! 💪💝<br><br>
@@ -3060,6 +3089,22 @@ function drawLeah() {
   ctx.fillRect(px - CELL_SIZE * VISION_RADIUS, py - CELL_SIZE * VISION_RADIUS, 
                 CELL_SIZE * VISION_RADIUS * 2, CELL_SIZE * VISION_RADIUS * 2);
   
+  // Disney-style sprite (falls back to the drawn version if art is missing)
+  if (ART.leah) {
+    const bob = Math.sin(Date.now() / 220) * 0.8;
+    drawSprite(ctx, ART.leah, px, py + CELL_SIZE * 0.52 + bob, CELL_SIZE * 1.35);
+    if (leahInvincible > 0) {
+      ctx.globalAlpha = (Math.sin(Date.now() / 60) + 1) / 2 * 0.6;
+      ctx.strokeStyle = '#ff3030';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(px, py, CELL_SIZE * 0.6, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    return;
+  }
+  
   const size = CELL_SIZE * 0.7;
   
   // School uniform DRESS (light blue/gray) with collar
@@ -3650,6 +3695,32 @@ function drawDaddyCompanion() {
                    Math.abs(dc.displayY - (player.displayY - 0.6)) > 0.05;
   const walkBob = isMoving ? Math.abs(Math.sin(Date.now() / 120)) * 1.5 : 0;
   const bodyY = py - walkBob;
+  
+  // Disney-style wizard sprite (falls back to the drawn version if art is missing)
+  if (ART.dad) {
+    // Soft magic aura, brighter while the wand is raised
+    const auraStrength = (dc.mode === 'wand' || magicLightTimer > 0) ? 0.55 : 0.22;
+    const aura = ctx.createRadialGradient(px, py, 0, px, py, CELL_SIZE * 1.1);
+    aura.addColorStop(0, `rgba(190, 150, 255, ${auraStrength})`);
+    aura.addColorStop(1, 'rgba(150, 120, 255, 0)');
+    ctx.fillStyle = aura;
+    ctx.fillRect(px - CELL_SIZE * 1.1, py - CELL_SIZE * 1.1, CELL_SIZE * 2.2, CELL_SIZE * 2.2);
+    
+    drawSprite(ctx, ART.dad, px, bodyY + CELL_SIZE * 0.52, CELL_SIZE * 1.45);
+    
+    // Star sparkle at the wand tip (top-left of the sprite)
+    const tipX = px - CELL_SIZE * 0.42;
+    const tipY = bodyY - CELL_SIZE * 0.78;
+    const twinkle = 0.5 + Math.sin(time * 2) * 0.5;
+    const tipGlow = ctx.createRadialGradient(tipX, tipY, 0, tipX, tipY, 9);
+    tipGlow.addColorStop(0, `rgba(255, 245, 190, ${0.75 * twinkle})`);
+    tipGlow.addColorStop(1, 'rgba(255, 215, 0, 0)');
+    ctx.fillStyle = tipGlow;
+    ctx.beginPath();
+    ctx.arc(tipX, tipY, 9, 0, Math.PI * 2);
+    ctx.fill();
+    return;
+  }
   
   // Subtle magical aura
   const auraSize = CELL_SIZE * (0.7 + Math.sin(time) * 0.05);
@@ -5210,6 +5281,17 @@ function drawRainbowHeart() {
     wctx.globalAlpha = alpha || 1;
     const s = scale;
     
+    // Disney-style sprite (falls back to the drawn version if art is missing)
+    if (ART.leah) {
+      wctx.fillStyle = 'rgba(0,0,0,0.18)';
+      wctx.beginPath();
+      wctx.ellipse(cx, cy + 30*s, 16*s, 4*s, 0, 0, Math.PI * 2);
+      wctx.fill();
+      drawSprite(wctx, ART.leah, cx, cy + 30*s, 72*s);
+      wctx.restore();
+      return;
+    }
+    
     // Shadow
     wctx.fillStyle = 'rgba(0,0,0,0.2)';
     wctx.beginPath();
@@ -5328,6 +5410,17 @@ function drawRainbowHeart() {
     wctx.save();
     wctx.globalAlpha = alpha || 1;
     const s = scale;
+    
+    // Disney-style sprite (falls back to the drawn version if art is missing)
+    if (ART.mom) {
+      wctx.fillStyle = 'rgba(0,0,0,0.18)';
+      wctx.beginPath();
+      wctx.ellipse(cx, cy + 47*s, 16*s, 4*s, 0, 0, Math.PI * 2);
+      wctx.fill();
+      drawSprite(wctx, ART.mom, cx, cy + 47*s, 98*s);
+      wctx.restore();
+      return;
+    }
     
     // Shadow
     wctx.fillStyle = 'rgba(0,0,0,0.2)';
@@ -5496,6 +5589,22 @@ function drawRainbowHeart() {
     wctx.save();
     wctx.globalAlpha = alpha || 1;
     const s = scale;
+    
+    // Disney-style sprite (falls back to the drawn version if art is missing)
+    if (ART.dad) {
+      wctx.fillStyle = 'rgba(0,0,0,0.18)';
+      wctx.beginPath();
+      wctx.ellipse(cx, cy + 47*s, 16*s, 4*s, 0, 0, Math.PI * 2);
+      wctx.fill();
+      const aura = wctx.createRadialGradient(cx, cy + 10*s, 0, cx, cy + 10*s, 45*s);
+      aura.addColorStop(0, 'rgba(190,150,255,0.30)');
+      aura.addColorStop(1, 'rgba(150,120,255,0)');
+      wctx.fillStyle = aura;
+      wctx.fillRect(cx - 45*s, cy - 35*s, 90*s, 90*s);
+      drawSprite(wctx, ART.dad, cx, cy + 47*s, 100*s);
+      wctx.restore();
+      return;
+    }
     
     // Subtle magical aura
     const auraGrad = wctx.createRadialGradient(cx, cy, 0, cx, cy, 35*s);
@@ -5860,7 +5969,7 @@ function drawRainbowHeart() {
       if (phase > 3.8) {
         const hugT = Math.min(1, (phase - 3.8) / 0.6);
         const ease = hugT * hugT * (3 - 2 * hugT);
-        dadCx = dadFinalX + (W * 0.36 - dadFinalX) * ease;
+        dadCx = dadFinalX + (W * 0.40 - dadFinalX) * ease;
       }
       
       drawDaddyWin(dadCx, dadCy, 1.05, 1, armsOpen);
@@ -5884,7 +5993,7 @@ function drawRainbowHeart() {
       if (phase > 3.8) {
         const hugT = Math.min(1, (phase - 3.8) / 0.6);
         const ease = hugT * hugT * (3 - 2 * hugT);
-        mommyCx = mommyFinalX + (W * 0.64 - mommyFinalX) * ease;
+        mommyCx = mommyFinalX + (W * 0.60 - mommyFinalX) * ease;
       }
       
       drawMommy(mommyCx, mommyCy, 1.0, 1, armsOpen);
