@@ -28,6 +28,8 @@ const PRECACHE = [
   './art-leah-swing.png',
   './art-leah-hurt.png',
   './art-boss-walk.png',
+  './art-mon2-walk.png',
+  './art-boss2-walk.png',
   './art-mom-walk.png',
   './art-powerups.png',
   './art-items2.png',

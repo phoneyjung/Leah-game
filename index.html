@@ -940,14 +940,32 @@
 // ==================== GAME CONFIG ====================
 // Level system - sizes are: Level 1 (50%), Level 2 (75%), Level 3 (100%)
 let currentLevel = 1; // 1, 2, or 3
-const MAX_LEVEL = 5;
+const MAX_LEVEL = 6;
 const LEVEL_SIZES = {
   1: { cols: 17, rows: 13, collectible: 'gem' },      // small cave, gems
   2: { cols: 26, rows: 19, collectible: 'cloth' },    // medium cave, cloth
-  3: { cols: 35, rows: 25, collectible: 'star' },     // big cave, stars
+  3: { cols: 35, rows: 25, collectible: 'star' },     // big cave, stars  + BOSS
   4: { cols: 41, rows: 29, collectible: 'moon' },     // deeper, moonstones
-  5: { cols: 47, rows: 33, collectible: 'sun' }       // deepest, sunstones
+  5: { cols: 47, rows: 33, collectible: 'sun' },      // deepest, sunstones
+  6: { cols: 51, rows: 37, collectible: 'sun' }       // the final descent  + BOSS
 };
+
+// A boss guards the way out every third level
+const BOSS_LEVELS = [3, 6];
+function isBossLevel(lv) { return BOSS_LEVELS.includes(lv); }
+
+// The monsters change species every three levels, and pick up new tricks
+// as the caves get deeper.
+function monsterTier(lv) { return lv <= 3 ? 1 : 2; }
+const MONSTER_TRAITS = {
+  1: { sight: 4,  dash: false, shoot: false },   // wanders, barely notices you
+  2: { sight: 6,  dash: false, shoot: false },   // gives chase
+  3: { sight: 8,  dash: true,  shoot: false },   // sudden bursts of speed
+  4: { sight: 7,  dash: false, shoot: false },   // new species, steady hunter
+  5: { sight: 9,  dash: true,  shoot: false },   // dashes again
+  6: { sight: 11, dash: true,  shoot: true }     // and spits crystal shards
+};
+function traits() { return MONSTER_TRAITS[currentLevel] || MONSTER_TRAITS[1]; }
 let COLS = LEVEL_SIZES[1].cols;
 let ROWS = LEVEL_SIZES[1].rows;
 const CELL_SIZE = 44;  // Bigger cells for better visibility on mobile
@@ -991,6 +1009,8 @@ const WALK_FILES = {
   dadCast:   'art-dad-cast.png',
   leahSwing: 'art-leah-swing.png',
   bossWalk:  'art-boss-walk.png',
+  monTier2Walk: 'art-mon2-walk.png',   // optional: deep-cave species
+  boss2Walk:    'art-boss2-walk.png',  // optional: level 6 boss
   momWalk:   'art-mom-walk.png'
 };
 const WALK_FRAMES = 4;
@@ -2685,7 +2705,7 @@ questions.push(...HARD_EN);
 questionsTH.push(...HARD_TH);
 
 // Which difficulties each level may draw from
-const LEVEL_DIFFICULTY = { 1: [1], 2: [1], 3: [1, 2], 4: [2, 3], 5: [3] };
+const LEVEL_DIFFICULTY = { 1: [1], 2: [1], 3: [1, 2], 4: [2, 3], 5: [3], 6: [3] };
 
 let activeQuestions = [];
 let maze = [];
@@ -2701,6 +2721,149 @@ let cameraX = 0, cameraY = 0;
 let particles = [];
 let shakeAmount = 0;
 
+// ==================== BOSS ARENA (its own scene) ====================
+// Walking into the gate swaps the whole map for a purpose-built arena with
+// pillars to hide behind. Beat the boss and the maze comes back exactly as
+// it was, with the boss lying defeated by the doorway.
+
+function buildArena() {
+  const W = ARENA_W, H = ARENA_H;
+  const m = [];
+  for (let y = 0; y < H; y++) {
+    const row = [];
+    for (let x = 0; x < W; x++) {
+      row.push((x === 0 || y === 0 || x === W - 1 || y === H - 1) ? 1 : 0);
+    }
+    m.push(row);
+  }
+  // Pillars to duck behind, kept clear of the middle and the entrance
+  const pillars = [
+    [4, 4], [4, H - 5], [W - 5, 4], [W - 5, H - 5],
+    [Math.floor(W / 2), 3], [Math.floor(W / 2), H - 4]
+  ];
+  for (const [px, py] of pillars) {
+    m[py][px] = 1;
+    m[py][px + 1] = 1;
+  }
+  return m;
+}
+
+function enterBossArena() {
+  if (inBossFight) return;
+  // Remember the maze exactly as it stands
+  mazeSnapshot = {
+    maze, COLS, ROWS,
+    player: { ...player },
+    zombies, pickups, secretCells, questionPositions, exitPos,
+    leahTrail, dadTrailIdx, monShots,
+    dad: daddyCompanion ? { x: daddyCompanion.displayX, y: daddyCompanion.displayY } : null
+  };
+
+  fadeOut(380, () => {
+    inBossFight = true;
+    COLS = ARENA_W; ROWS = ARENA_H;
+    maze = buildArena();
+    questionPositions = [];
+    pickups = [];
+    secretCells = [];
+    zombies = [];
+    monShots = [];
+    exitPos = { x: -1, y: -1 };          // no way out until he falls
+
+    player.x = 2; player.y = ARENA_H - 3;
+    player.displayX = player.x; player.displayY = player.y;
+    leahTrail = [{ x: player.x, y: player.y }];
+    dadTrailIdx = 0;
+    if (daddyCompanion) { daddyCompanion.displayX = player.x; daddyCompanion.displayY = player.y + 0; }
+
+    const bx = Math.floor(ARENA_W / 2), by = Math.floor(ARENA_H / 2) - 1;
+    const hp = currentLevel === 3 ? 5 : 8;
+    boss = {
+      x: bx, y: by, displayX: bx, displayY: by,
+      hp, maxHp: hp, moveTimer: 0, hurtUntil: 0, face: -1, phase: 0,
+      tier: monsterTier(currentLevel), slamReady: Date.now() + 3000
+    };
+    bossDefeated = false;
+    startEscapeBGM();                     // the fight gets the tense track
+    showToast(currentLang === 'th'
+      ? '👑 เจ้าถ้ำขวางทางอยู่! หลบหลังเสาแล้วให้พ่อยิงเวท'
+      : '👑 The cave king blocks the way! Hide behind the pillars and cast');
+  });
+}
+
+function leaveBossArena() {
+  fadeOut(420, () => {
+    const sn = mazeSnapshot;
+    inBossFight = false;
+    COLS = sn.COLS; ROWS = sn.ROWS;
+    maze = sn.maze;
+    zombies = sn.zombies;
+    pickups = sn.pickups;
+    secretCells = sn.secretCells;
+    questionPositions = sn.questionPositions;
+    exitPos = sn.exitPos;
+    monShots = [];
+    // Step back out of the gate so the fight does not restart
+    player.x = bossGate.x; player.y = bossGate.y;
+    player.displayX = player.x; player.displayY = player.y;
+    leahTrail = [{ x: player.x, y: player.y }];
+    dadTrailIdx = 0;
+    if (daddyCompanion) { daddyCompanion.displayX = player.x; daddyCompanion.displayY = player.y; }
+    mazeSnapshot = null;
+    bossDefeated = true;
+    startBGM();
+    showToast(currentLang === 'th'
+      ? '🏆 ล้มเจ้าถ้ำได้แล้ว! ประตูทางออกเปิดแล้ว'
+      : '🏆 The cave king is down! The exit is open');
+  });
+}
+
+// A dozing, defeated boss slumped by the gate once the fight is over
+function drawSleepingBoss() {
+  if (inBossFight || !bossGate || !bossDefeated) return;
+  const px = bossGate.x * CELL_SIZE + CELL_SIZE / 2;
+  const py = bossGate.y * CELL_SIZE + CELL_SIZE / 2;
+  const sheet = (monsterTier(currentLevel) > 1 && ART.boss2Walk) ? ART.boss2Walk : ART.bossWalk;
+  const size = CELL_SIZE * 2.2;
+  ctx.save();
+  ctx.globalAlpha = 0.85;
+  ctx.translate(px, py + CELL_SIZE * 0.3);
+  ctx.rotate(Math.PI / 2);              // lying on his side
+  ctx.translate(-px, -(py + CELL_SIZE * 0.3));
+  if (sheet) drawWalkFrame(ctx, sheet, 0, px, py + CELL_SIZE * 0.3, size, 1);
+  ctx.restore();
+  // sleepy z's
+  const t = Date.now() / 600;
+  ctx.fillStyle = 'rgba(255,255,255,0.65)';
+  ctx.font = `${Math.round(CELL_SIZE * 0.4)}px Arial`;
+  for (let i = 0; i < 3; i++) {
+    const k = (t + i * 0.33) % 1;
+    ctx.globalAlpha = 0.7 * (1 - k);
+    ctx.fillText('z', px + CELL_SIZE * 0.5 + k * 10, py - CELL_SIZE * 0.4 - k * 22);
+  }
+  ctx.globalAlpha = 1;
+}
+
+// The gate itself
+function drawBossGate() {
+  if (inBossFight || !bossGate || bossDefeated) return;
+  const px = bossGate.x * CELL_SIZE + CELL_SIZE / 2;
+  const py = bossGate.y * CELL_SIZE + CELL_SIZE / 2;
+  const t = Date.now() / 400;
+  const pulse = 0.6 + Math.sin(t) * 0.3;
+  const g = ctx.createRadialGradient(px, py, 0, px, py, CELL_SIZE * 1.4);
+  g.addColorStop(0, `rgba(255, 80, 120, ${0.5 * pulse})`);
+  g.addColorStop(1, 'rgba(180, 40, 90, 0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(px - CELL_SIZE * 1.4, py - CELL_SIZE * 1.4, CELL_SIZE * 2.8, CELL_SIZE * 2.8);
+  ctx.save();
+  ctx.font = `${Math.round(CELL_SIZE * 0.7)}px Arial`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(255,120,150,0.9)'; ctx.shadowBlur = 14;
+  ctx.fillText('👑', px, py + Math.sin(t * 1.3) * 2);
+  ctx.restore();
+}
+
 // ==================== BOSS (final level) ====================
 function updateBoss() {
   if (!boss || bossDefeated) return;
@@ -2714,6 +2877,18 @@ function updateBoss() {
   if (boss.moveTimer < speed) return;
   boss.moveTimer = 0;
 
+  // SLAM: he pounds the floor and sends shards outward. Stand behind a
+  // pillar and they break on the stone instead of on Leah.
+  if (inBossFight && Date.now() > (boss.slamReady || 0)) {
+    boss.slamReady = Date.now() + (boss.tier > 1 ? 4200 : 5600);
+    addShake(14);
+    orbBurst(boss.x, boss.y, true);
+    for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]) {
+      monShots.push({ x: boss.x, y: boss.y, vx: dx * 0.13, vy: dy * 0.13, life: 90 });
+    }
+    if (!playSfx('hit')) sfxZombieHit();
+  }
+
   const path = findPath(boss.x, boss.y, player.x, player.y);
   if (path && path.length) {
     const n = path[0];
@@ -2721,7 +2896,7 @@ function updateBoss() {
     boss.x = n.x; boss.y = n.y;
   }
   // Touching Leah costs her, just like the small ones
-  if (boss.x === player.x && boss.y === player.y && leahInvincible <= 0) {
+  if (Math.max(Math.abs(boss.x - player.x), Math.abs(boss.y - player.y)) <= 1 && leahInvincible <= 0) {
     handleZombieCollision({ hitCount: 0, x: boss.x, y: boss.y });
   }
 }
@@ -2744,6 +2919,7 @@ function hitBoss() {
     }
     sfxWin();
     showToast(currentLang === 'th' ? '🏆 ชนะเจ้าถ้ำแล้ว!' : '🏆 You beat the cave king!');
+    if (inBossFight) setTimeout(leaveBossArena, 1500);
   } else {
     showToast(currentLang === 'th'
       ? `💥 โดนแล้ว! เหลืออีก ${boss.hp} ครั้ง`
@@ -2756,7 +2932,7 @@ function drawBoss() {
   const px = boss.displayX * CELL_SIZE + CELL_SIZE / 2;
   const py = boss.displayY * CELL_SIZE + CELL_SIZE / 2;
   const hurt = Date.now() < boss.hurtUntil;
-  const size = CELL_SIZE * 2.4;
+  const size = CELL_SIZE * 4.0;
   const bob = Math.sin(boss.phase * 2) * 2;
 
   // Menacing but friendly glow
@@ -2773,9 +2949,15 @@ function drawBoss() {
 
   ctx.save();
   if (hurt) ctx.globalAlpha = 0.55 + Math.sin(Date.now() / 50) * 0.35;
-  const sheet = ART.bossWalk || ART.monWalk;
+  const sheet = (boss.tier > 1 && ART.boss2Walk) ? ART.boss2Walk : (ART.bossWalk || ART.monWalk);
   if (sheet) {
     drawWalkFrame(ctx, sheet, Math.floor(boss.phase * 2) % 4, px, py + size * 0.42 + bob, size, boss.face);
+    if (boss.tier > 1 && !ART.boss2Walk) {
+      ctx.globalCompositeOperation = 'source-atop';
+      ctx.fillStyle = 'rgba(110, 90, 230, 0.38)';
+      ctx.fillRect(px - size, py - size, size * 2, size * 2);
+      ctx.globalCompositeOperation = 'source-over';
+    }
   } else {
     ctx.fillStyle = '#6f9b56';
     ctx.beginPath(); ctx.arc(px, py, size * 0.34, 0, Math.PI * 2); ctx.fill();
@@ -2877,7 +3059,7 @@ function updateWarpBtn() {
 // Teleports to the farthest question still unanswered, or to the exit when
 // every question is done - so it is useful at any point in the level.
 function useWarp() {
-  if (warpCharges <= 0 || warpAnim) return;
+  if (warpCharges <= 0 || warpAnim || inBossFight) return;
   if (gameState !== 'playing' && gameState !== 'escape') return;
   if (currentQuestionIndex !== -1) return;
 
@@ -3112,7 +3294,12 @@ let wrongStreak = 0;         // wrong answers in a row
 let mercy = 0;               // silent difficulty relief, 0..3
 let rapidUntil = 0;          // bolts fire with almost no cooldown until this time
 let secretCells = [];        // walls that can be walked through
+let monShots = [];           // crystal shards spat by deep-cave monsters
 let boss = null;             // {x,y,displayX,displayY,hp,maxHp,...}
+let bossGate = null;         // the doorway in the maze that leads to the fight
+let inBossFight = false;     // true while the arena scene is showing
+let mazeSnapshot = null;     // everything we put back afterwards
+const ARENA_W = 21, ARENA_H = 15;
 let bossDefeated = false;
 
 const PICKUP_KINDS = ['lantern', 'boots', 'shield'];
@@ -3122,7 +3309,8 @@ function resetRunExtras() {
   pickups = []; secretCells = [];
   buffLantern = 0; buffSpeed = 0; buffShield = 0;
   answerStreak = 0; wrongStreak = 0; mercy = 0; rapidUntil = 0;
-  boss = null; bossDefeated = false;
+  monShots = [];
+  boss = null; bossGate = null; bossDefeated = false;
 }
 
 // Tick the timed buffs once a second
@@ -3176,7 +3364,7 @@ const STARS_KEY = 'leahCaveStars';
 // Per-run scoring for the 3-star rating
 let runHits = 0;          // times a monster caught Leah this level
 let runStartTime = 0;     // when the level began
-const PAR_SECONDS = { 1: 120, 2: 210, 3: 300, 4: 360, 5: 420 }; // beat this for the speed star
+const PAR_SECONDS = { 1: 120, 2: 210, 3: 300, 4: 360, 5: 420, 6: 480 }; // beat this for the speed star
 
 function loadStars() {
   try { return JSON.parse(localStorage.getItem(STARS_KEY)) || {}; } catch (e) { return {}; }
@@ -3309,8 +3497,8 @@ let leahKnockback = null; // { dx, dy, frames }
 let phoneAttack = null; // { fromX, fromY, toX, toY, frames, targetZombieId }
 // Level 1 has no monsters at all so a young player can learn to move and
 // answer questions first; they arrive in level 2 and ramp up in level 3.
-const ZOMBIE_COUNT_BY_LEVEL = { 1: 0, 2: 2, 3: 3, 4: 4, 5: 5 };
-const ZOMBIE_SPEED_BY_LEVEL = { 1: 200, 2: 170, 3: 130, 4: 110, 5: 95 }; // frames per step (higher = slower)
+const ZOMBIE_COUNT_BY_LEVEL = { 1: 0, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6 };
+const ZOMBIE_SPEED_BY_LEVEL = { 1: 200, 2: 170, 3: 130, 4: 115, 5: 100, 6: 85 }; // frames per step (higher = slower)
 const ZOMBIE_COUNT = 3;
 const ZOMBIE_MOVE_INTERVAL = 130; // frames between zombie moves (very slow - easy mode)
 const INVINCIBLE_FRAMES = 90; // ~1.5s at 60fps
@@ -3443,15 +3631,15 @@ function generateMaze() {
     secretCells.push({ x: c.x, y: c.y, found: false });
   }
 
-  // --- BOSS on the final level ---
-  if (currentLevel === MAX_LEVEL && freeCells.length > pickupCount) {
+  // --- BOSS GATE every third level ---
+  // The fight happens in its own arena, so the maze only needs a doorway.
+  if (isBossLevel(currentLevel)) {
     const far = freeCells
       .map(c => ({ c, d: Math.abs(c.x - 1) + Math.abs(c.y - 1) }))
-      .sort((a, b) => b.d - a.d)[0].c;
-    boss = {
-      x: far.x, y: far.y, displayX: far.x, displayY: far.y,
-      hp: 5, maxHp: 5, moveTimer: 0, hurtUntil: 0, face: -1, phase: 0
-    };
+      .sort((a, b) => b.d - a.d);
+    const g = (far[0] && far[0].c) || { x: exitPos.x, y: exitPos.y };
+    bossGate = { x: g.x, y: g.y };
+    pickups = pickups.filter(u => !(u.x === g.x && u.y === g.y));
   }
   
   // Spawn zombies in random open path cells, far from the player start
@@ -3541,7 +3729,51 @@ function updateZombies() {
     const baseSpeed = ZOMBIE_SPEED_BY_LEVEL[currentLevel] ?? ZOMBIE_MOVE_INTERVAL;
     if (z.moveTimer < baseSpeed * (1 + mercy * 0.22)) return;
     z.moveTimer = 0;
-    
+
+    const tr = traits();
+    const dist = Math.abs(z.x - player.x) + Math.abs(z.y - player.y);
+
+    // DASH: deeper monsters lunge forward when they get close
+    if (tr.dash && dist <= 4 && Date.now() > (z.dashReady || 0)) {
+      z.dashReady = Date.now() + 5000;
+      z.dashSteps = 3;
+      z.hurtUntil = 0;
+    }
+
+    // SPIT: the deepest ones throw a crystal shard down a clear line
+    if (tr.shoot && dist <= tr.sight && Date.now() > (z.shootReady || 0)) {
+      const dxs = Math.sign(player.x - z.x), dys = Math.sign(player.y - z.y);
+      if ((dxs === 0) !== (dys === 0)) {          // straight line only
+        let clear = true, cx2 = z.x, cy2 = z.y;
+        for (let i = 0; i < tr.sight; i++) {
+          cx2 += dxs; cy2 += dys;
+          if (!maze[cy2] || maze[cy2][cx2] === 1) { clear = false; break; }
+          if (cx2 === player.x && cy2 === player.y) break;
+        }
+        if (clear) {
+          z.shootReady = Date.now() + 4000;
+          monShots.push({ x: z.x, y: z.y, vx: dxs * 0.16, vy: dys * 0.16, life: tr.sight * 8 });
+        }
+      }
+    }
+
+    // Hunt: inside their sight they take the shortest path toward Leah
+    const hunting = dist <= tr.sight;
+    if (hunting || z.dashSteps > 0) {
+      const steps = z.dashSteps > 0 ? 2 : 1;      // a dash covers two cells
+      if (z.dashSteps > 0) z.dashSteps--;
+      for (let sIdx = 0; sIdx < steps; sIdx++) {
+        const path = findPath(z.x, z.y, player.x, player.y);
+        if (!path || !path.length) break;
+        const n = path[0];
+        const taken = zombies.some(o => o !== z && o.alive && o.x === n.x && o.y === n.y);
+        if (taken) break;
+        if (n.x !== z.x) z.face = n.x > z.x ? 1 : -1;
+        z.x = n.x; z.y = n.y;
+      }
+      return;
+    }
+
     // Try to move in current direction; if blocked, pick a new random direction
     const dirs = [[0,-1],[0,1],[-1,0],[1,0]]; // up, down, left, right
     let dx = dirs[z.dir][0], dy = dirs[z.dir][1];
@@ -4025,6 +4257,12 @@ function drawGoldenPath() {
 let cameraZoom = 1.0; // current zoom level (1.0 = normal, 0.4 = zoomed out to see whole map)
 
 function getTargetZoom() {
+  if (inBossFight) {
+    // Frame the whole arena so there is room to read his attacks and dodge
+    const fitX = VIEW_WIDTH / (COLS * CELL_SIZE);
+    const fitY = VIEW_HEIGHT / (ROWS * CELL_SIZE);
+    return Math.max(0.42, Math.min(1.0, Math.min(fitX, fitY) * 0.98));
+  }
   if (magicLightTimer <= 0) return 1.0;
   
   const elapsed = HELP_DURATION - magicLightTimer;
@@ -4354,10 +4592,13 @@ function draw() {
   if (daddyCompanion) drawDaddyCompanion();
   
   // Draw sword slash effect
-  if (!frozen) { updateDadOrbs(); updateBoss(); }
+  if (!frozen) { updateDadOrbs(); updateBoss(); updateMonShots(); }
+  drawMonShots();
   updateWarpAnim(16);
   drawWarpBeam();
   drawPickups();
+  drawBossGate();
+  drawSleepingBoss();
   drawBoss();
   drawFx();
   {
@@ -4891,16 +5132,35 @@ function drawZombie(z) {
     ctx.ellipse(px, py + CELL_SIZE * 0.44, CELL_SIZE * 0.24, CELL_SIZE * 0.075, 0, 0, Math.PI * 2);
     ctx.fill();
     // Cyan crystal glow on its back
+    const aura = monsterTier(currentLevel) > 1 ? '150, 120, 255' : '90, 230, 255';
     const gl = ctx.createRadialGradient(px, py, 0, px, py, CELL_SIZE * 0.7);
-    gl.addColorStop(0, 'rgba(90, 230, 255, 0.30)');
-    gl.addColorStop(1, 'rgba(90, 230, 255, 0)');
+    gl.addColorStop(0, `rgba(${aura}, 0.32)`);
+    gl.addColorStop(1, `rgba(${aura}, 0)`);
     ctx.fillStyle = gl;
     ctx.fillRect(px - CELL_SIZE * 0.7, py - CELL_SIZE * 0.7, CELL_SIZE * 1.4, CELL_SIZE * 1.4);
     // Waddle: rock side to side as it steps
     ctx.translate(px, py + CELL_SIZE * 0.46);
     ctx.rotate(waddle);
     ctx.translate(-px, -(py + CELL_SIZE * 0.46));
-    if (hurt) {
+    const tier = monsterTier(currentLevel);
+    if (tier > 1) {
+      // Deep-cave species: same silhouette, colder colouring
+      ctx.save();
+      if (hurt) {
+        const rx = Math.sign(px - (player.displayX * CELL_SIZE + CELL_SIZE / 2)) * 1.6;
+        drawSprite(ctx, ART.monTier2 || ART.hurt, px + rx, py + CELL_SIZE * 0.46, CELL_SIZE * 1.12);
+      } else {
+        drawWalkFrame(ctx, ART.monTier2Walk || ART.monWalk, frame, px,
+                      py + CELL_SIZE * 0.46 + bob, CELL_SIZE * 1.12, z.gait.face);
+      }
+      if (!ART.monTier2Walk) {
+        // Tint only the sprite we just drew
+        ctx.globalCompositeOperation = 'source-atop';
+        ctx.fillStyle = 'rgba(90, 90, 220, 0.42)';
+        ctx.fillRect(px - CELL_SIZE, py - CELL_SIZE, CELL_SIZE * 2, CELL_SIZE * 2);
+      }
+      ctx.restore();
+    } else if (hurt) {
       // Recoils away from Leah while startled
       const rx = Math.sign(px - (player.displayX * CELL_SIZE + CELL_SIZE / 2)) * 1.6;
       drawSprite(ctx, ART.hurt, px + rx, py + CELL_SIZE * 0.46, CELL_SIZE * 1.08);
@@ -6064,6 +6324,17 @@ function drawFogOfWar() {
   
   // Effective vision radius - expands during magic, contracts back
   const magicRadius = getMagicLightRadius();
+  if (inBossFight) {
+    // Arena is fully lit so the pillars and the boss are always readable
+    const arenaGrad = ctx.createRadialGradient(px, py, 0, px, py,
+                        Math.max(VIEW_WIDTH, VIEW_HEIGHT));
+    arenaGrad.addColorStop(0, 'rgba(0,0,0,0)');
+    arenaGrad.addColorStop(0.85, 'rgba(0,0,0,0)');
+    arenaGrad.addColorStop(1, 'rgba(0,0,0,0.35)');
+    ctx.fillStyle = arenaGrad;
+    ctx.fillRect(0, 0, VIEW_WIDTH, VIEW_HEIGHT);
+    return;
+  }
   const lanternBonus = buffLantern > 0 ? 2.6 : 0;
   const effectiveRadius = Math.max(VISION_RADIUS + lanternBonus, magicRadius);
   // Scale radius by zoom too (so cells appear correctly sized)
@@ -6242,7 +6513,7 @@ function attackZombie() {
   
   // The boss counts as a target for her swing as well
   if (boss && !bossDefeated &&
-      Math.max(Math.abs(boss.x - player.x), Math.abs(boss.y - player.y)) <= 1) {
+      Math.max(Math.abs(boss.x - player.x), Math.abs(boss.y - player.y)) <= 2) {
     leahAttack = { frames: 0, dirX: Math.sign(boss.x - player.x), dirY: Math.sign(boss.y - player.y), hit: true };
     hitBoss();
     return;
@@ -6340,6 +6611,13 @@ function movePlayer(dx, dy) {
   pushTrail(newX, newY);
   sfxStep();
 
+  // Walking into the gate drops her into the boss arena
+  if (bossGate && !bossDefeated && !inBossFight &&
+      newX === bossGate.x && newY === bossGate.y) {
+    enterBossArena();
+    return;
+  }
+
   // Pick anything up that is standing on this tile
   const pi = pickups.findIndex(u => u.x === newX && u.y === newY);
   if (pi >= 0) { collectPickup(pickups[pi]); pickups.splice(pi, 1); }
@@ -6348,10 +6626,10 @@ function movePlayer(dx, dy) {
   if (qPos) showQuestion(qPos.index);
   
   if (maze[newY][newX] === 3 && gameState === 'escape') {
-    if (boss && !bossDefeated) {
+    if (isBossLevel(currentLevel) && !bossDefeated) {
       showToast(currentLang === 'th'
-        ? '👹 เจ้าถ้ำขวางทางอยู่! ให้พ่อยิงเวทใส่มัน 5 ครั้ง'
-        : '👹 The cave king blocks the way! Hit him 5 times');
+        ? '👑 ต้องล้มเจ้าถ้ำก่อน! หาประตูมงกุฎในเขาวงกต'
+        : '👑 Beat the cave king first! Find the crown gate');
     } else if (gemsCollected === 10) winGame();
   }
 }
@@ -6581,7 +6859,7 @@ function nextLevel() {
 function applyLevelBackdrop() {
   document.body.style.backgroundImage =
     "linear-gradient(rgba(10,0,25,0.72), rgba(10,0,25,0.82)), url('" +
-    ({ 1:'art-cave.jpg', 2:'art-cave2.jpg', 3:'art-cave3.jpg', 4:'art-cave4.jpg', 5:'art-cave3.jpg' }[currentLevel] || 'art-cave.jpg') + "')";
+    ({ 1:'art-cave.jpg', 2:'art-cave2.jpg', 3:'art-cave3.jpg', 4:'art-cave4.jpg', 5:'art-cave3.jpg', 6:'art-cave4.jpg' }[currentLevel] || 'art-cave.jpg') + "')";
 }
 
 function showEscapeMessage() {
@@ -6678,7 +6956,7 @@ function loseGame(message) {
 // ==================== RAINBOW HEART ANIMATION ====================
 // One short celebration clip per level. If a file is missing or the browser
 // refuses to play it, the hand-drawn animation runs instead.
-const WIN_CLIPS = { 1: 'win1.mp4', 2: 'win2.mp4', 3: 'win3.mp4', 4: 'win2.mp4', 5: 'win1.mp4' };
+const WIN_CLIPS = { 1: 'win1.mp4', 2: 'win2.mp4', 3: 'win3.mp4', 4: 'win2.mp4', 5: 'win1.mp4', 6: 'win3.mp4' };
 
 function showWinScene() {
   const vid = document.getElementById('winVideo');
@@ -7973,9 +8251,9 @@ function drawRainbowHeart() {
     const lang = currentLang || 'en';
     
     // Reward names based on level
-    const rewardNameTH = { 1:'หัวใจสายรุ้ง', 2:'ผ้าทอสวยงาม', 3:'ตุ๊กตาน้องแมว', 4:'ดาวประกายพรึก', 5:'ถ้วยรางวัลคริสตัล' }[currentLevel];
-    const rewardNameEN = { 1:'Rainbow Heart', 2:'Beautiful Cloth', 3:'Plush Friend', 4:'Great Star', 5:'Crystal Trophy' }[currentLevel];
-    const rewardEmoji  = { 1:'🌈', 2:'🧵', 3:'🎀', 4:'🌟', 5:'🏆' }[currentLevel];
+    const rewardNameTH = { 1:'หัวใจสายรุ้ง', 2:'ผ้าทอสวยงาม', 3:'ตุ๊กตาน้องแมว', 4:'ดาวประกายพรึก', 5:'ถ้วยรางวัลคริสตัล', 6:'มงกุฎเจ้าถ้ำ' }[currentLevel];
+    const rewardNameEN = { 1:'Rainbow Heart', 2:'Beautiful Cloth', 3:'Plush Friend', 4:'Great Star', 5:'Crystal Trophy', 6:"Cave King's Crown" }[currentLevel];
+    const rewardEmoji  = { 1:'🌈', 2:'🧵', 3:'🎀', 4:'🌟', 5:'🏆', 6:'👑' }[currentLevel];
     
     if (phase > 1.2 && messageStage === 0) {
       msgEl.textContent = lang === 'th' 
@@ -8269,7 +8547,7 @@ function updateDadOrbs() {
       continue;
     }
     // Hit the boss
-    if (boss && !bossDefeated && Math.hypot(boss.x - o.x, boss.y - o.y) < 1.2) {
+    if (boss && !bossDefeated && Math.hypot(boss.x - o.x, boss.y - o.y) < 2.0) {
       hitBoss();
       dadOrbs.splice(i, 1);
       continue;
@@ -8335,6 +8613,41 @@ function drawFx() {
     ctx.globalCompositeOperation = 'lighter';
     ctx.drawImage(sheet, f * fw, 0, fw, sheet.height, px - sz / 2, py - sz / 2, sz, sz);
     ctx.restore();
+  }
+}
+
+function updateMonShots() {
+  for (let i = monShots.length - 1; i >= 0; i--) {
+    const m = monShots[i];
+    m.x += m.vx; m.y += m.vy; m.life--;
+    const cx = Math.round(m.x), cy = Math.round(m.y);
+    if (m.life <= 0 || !maze[cy] || maze[cy][cx] === undefined || maze[cy][cx] === 1) {
+      monShots.splice(i, 1);
+      continue;
+    }
+    if (Math.hypot(m.x - player.x, m.y - player.y) < 0.6 && leahInvincible <= 0) {
+      monShots.splice(i, 1);
+      handleZombieCollision({ hitCount: 0, x: Math.round(m.x), y: Math.round(m.y) });
+    }
+  }
+}
+
+function drawMonShots() {
+  for (const m of monShots) {
+    const px = m.x * CELL_SIZE + CELL_SIZE / 2;
+    const py = m.y * CELL_SIZE + CELL_SIZE / 2;
+    const g = ctx.createRadialGradient(px, py, 0, px, py, CELL_SIZE * 0.34);
+    g.addColorStop(0, 'rgba(180, 255, 250, 0.95)');
+    g.addColorStop(0.5, 'rgba(90, 220, 255, 0.6)');
+    g.addColorStop(1, 'rgba(60, 180, 255, 0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(px, py, CELL_SIZE * 0.34, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(160,245,255,0.55)';
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.moveTo(px, py);
+    ctx.lineTo(px - m.vx * CELL_SIZE * 3, py - m.vy * CELL_SIZE * 3);
+    ctx.stroke();
   }
 }
 
@@ -8583,7 +8896,8 @@ const BOOK_ROWS = [
   { lv: 2, icon: '🧵', th: 'เศษผ้าทอ',      en: 'Cloth Pieces',  rth: 'ผ้าทอสายรุ้ง', ren: 'Woven Cloth' },
   { lv: 3, icon: '⭐', th: 'ดาวทอง',        en: 'Golden Stars',  rth: 'ตุ๊กตาน้องแมว', ren: 'Plush Friend' },
   { lv: 4, icon: '🌙', th: 'หินจันทรา',     en: 'Moonstones',    rth: 'ดาวประกายพรึก', ren: 'Great Star' },
-  { lv: 5, icon: '☀️', th: 'หินสุริยะ',      en: 'Sunstones',     rth: 'ถ้วยรางวัลคริสตัล', ren: 'Crystal Trophy' }
+  { lv: 5, icon: '☀️', th: 'หินสุริยะ',      en: 'Sunstones',     rth: 'ถ้วยรางวัลคริสตัล', ren: 'Crystal Trophy' },
+  { lv: 6, icon: '👑', th: 'หินสุริยะ (ลึกสุด)', en: 'Sunstones (deepest)', rth: 'มงกุฎเจ้าถ้ำ', ren: "Cave King's Crown" }
 ];
 function openBook() {
   sfxClick();
@@ -8721,6 +9035,8 @@ function restartGame() {
   hintsLeft = 1;
   warpCharges = 0;
   warpAnim = null;
+  inBossFight = false;
+  mazeSnapshot = null;
   updateWarpBtn();
   
   document.getElementById('timer').textContent = '--:--';
