@@ -39,6 +39,8 @@ const PRECACHE = [
   './art-secret.jpg',
   './art-fx-collect.jpg',
   './art-fx-shield.jpg',
+  './art-warp.png',
+  './art-fx-warp.jpg',
   './art-lose.jpg',
   './bgm-calm.mp3',
   './bgm-escape.mp3',

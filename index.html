@@ -974,6 +974,8 @@ const ART_FILES = {
   reward5: 'art-reward5.png',
   exitArt: 'art-exit.png',
   leahHurt: 'art-leah-hurt.png',
+  warpArt: 'art-warp.png',        // the warp stone pickup
+  fxWarp:  'art-fx-warp.jpg',     // 5-frame teleport beam, drawn additively
   fxCollect: 'art-fx-collect.jpg',  // 5-frame rainbow pickup burst
   fxShield:  'art-fx-shield.jpg',   // 5-frame shield block
   plush: 'art-plush.png',   // level 3 reward
@@ -2972,6 +2974,28 @@ function updateWarpAnim(dt) {
 // The beam of light that carries her
 function drawWarpBeam() {
   if (!warpAnim) return;
+
+  if (ART.fxWarp) {
+    const px = player.displayX * CELL_SIZE + CELL_SIZE / 2;
+    const footY = player.displayY * CELL_SIZE + CELL_SIZE * 0.95;
+    // Rising plays frames 0-2 as the beam builds, falling plays 2-4 as it fades
+    const k = warpAnim.stage === 'rise'
+      ? Math.min(1, warpAnim.t / WARP_RISE_MS)
+      : Math.min(1, warpAnim.t / WARP_FALL_MS);
+    const frame = warpAnim.stage === 'rise'
+      ? Math.min(2, Math.floor(k * 3))
+      : Math.min(4, 2 + Math.floor(k * 3));
+    const fw = ART.fxWarp.width / 5;
+    const h = CELL_SIZE * 7.5;
+    const w = fw * h / ART.fxWarp.height;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.drawImage(ART.fxWarp, frame * fw, 0, fw, ART.fxWarp.height,
+                  px - w / 2, footY - h, w, h);
+    ctx.restore();
+    return;
+  }
+
   const px = player.displayX * CELL_SIZE + CELL_SIZE / 2;
   const baseY = player.displayY * CELL_SIZE + CELL_SIZE / 2;
   const k = warpAnim.stage === 'rise'
@@ -8295,6 +8319,16 @@ function drawPickups() {
     ctx.fillStyle = g;
     ctx.fillRect(px - CELL_SIZE * 0.72, py - CELL_SIZE * 0.72, CELL_SIZE * 1.44, CELL_SIZE * 1.44);
 
+    if (u.kind === 'warp' && ART.warpArt) {
+      const sz = CELL_SIZE * 0.92;
+      const bob = Math.sin(t * 2 + u.x) * 2.5;
+      ctx.save();
+      ctx.shadowColor = 'rgba(190,120,255,0.9)';
+      ctx.shadowBlur = 14;
+      ctx.drawImage(ART.warpArt, px - sz / 2, py - sz / 2 + bob, sz, sz);
+      ctx.restore();
+      continue;
+    }
     if (u.kind === 'warp') {
       // Spinning arcane portal, drawn so it stands out from the other pickups
       const spin = t * 1.6 + u.x;
