@@ -993,6 +993,12 @@ const ART_FILES = {
   exitArt: 'art-exit.png',
   leahHurt: 'art-leah-hurt.png',
   warpArt: 'art-warp.png',        // the warp stone pickup
+  bossFloor: 'art-boss-floor.jpg',
+  bossWall:  'art-boss-wall.jpg',
+  bossGateArt: 'art-boss-gate.png',
+  bossSleep: 'art-boss-sleep.png',
+  hazards:   'art-hazards.png',   // rock, spikes, crystal
+  fxSlam:    'art-fx-slam.jpg',
   fxWarp:  'art-fx-warp.jpg',     // 5-frame teleport beam, drawn additively
   fxCollect: 'art-fx-collect.jpg',  // 5-frame rainbow pickup burst
   fxShield:  'art-fx-shield.jpg',   // 5-frame shield block
@@ -1253,10 +1259,13 @@ const SFX_FILES = {
   magic:   'sfx-magic.mp3',
   hit:     'sfx-hit.mp3',
   win:     'sfx-win.mp3',
+  slam:    'sfx-slam.mp3',
+  rock:    'sfx-rock.mp3',
+  crystal: 'sfx-crystal.mp3',
   bolt:    'sfx-bolt.mp3',
   warp:    'sfx-warp.mp3'
 };
-const SFX_VOL = { collect: 0.55, correct: 0.6, wrong: 0.5, magic: 0.5, hit: 0.55, win: 0.7, bolt: 0.5, warp: 0.6 };
+const SFX_VOL = { collect: 0.55, correct: 0.6, wrong: 0.5, magic: 0.5, hit: 0.55, win: 0.7, bolt: 0.5, warp: 0.6, slam: 0.6, rock: 0.5, crystal: 0.55 };
 const sfxPool = {};
 const SFX_VOICES = 3;
 
@@ -1464,7 +1473,7 @@ function sfxToast() {
 // ==================== RECORDED SOUNDTRACK ====================
 // Two looping mp3s. If either file is missing the game falls straight back
 // to the synthesised score, so nothing breaks and the cave is never silent.
-const TRACKS = { calm: 'bgm-calm.mp3', escape: 'bgm-escape.mp3' };
+const TRACKS = { calm: 'bgm-calm.mp3', escape: 'bgm-escape.mp3', boss: 'bgm-boss.mp3', boss2: 'bgm-boss2.mp3' };
 const music = {};
 let musicTrack = null;       // 'calm' | 'escape' | null
 const MUSIC_VOL = 0.28;   // background score sits well under the effects
@@ -2726,6 +2735,233 @@ let shakeAmount = 0;
 // pillars to hide behind. Beat the boss and the maze comes back exactly as
 // it was, with the boss lying defeated by the doorway.
 
+// ---- arena hazards and helpers ----
+let arenaRocks = [];      // falling ceiling rocks: warn -> impact
+let arenaVents = [];      // floor vents that erupt crystal spikes
+let arenaCrystals = [];   // shootable crystals that drop a buff
+let rockTimer = 0;
+
+function bossPhase() {
+  if (!boss) return 1;
+  return boss.hp <= boss.maxHp / 2 ? 2 : 1;   // he gets rougher when hurt
+}
+
+// Once he is half beaten the music steps up a gear
+function checkBossMusic() {
+  if (!inBossFight || bossDefeated) return;
+  if (bossPhase() === 2 && musicTrack !== 'boss2') playTrack('boss2');
+}
+
+function arenaFloorFree(x, y) {
+  return maze[y] && maze[y][x] === 0 &&
+         !arenaCrystals.some(c => c.x === x && c.y === y) &&
+         !arenaVents.some(v => v.x === x && v.y === y) &&
+         !(boss && Math.abs(boss.x - x) <= 1 && Math.abs(boss.y - y) <= 1);
+}
+
+function setupArenaHazards() {
+  arenaRocks = []; rockTimer = 0;
+  // Vents sit in a ring around the middle so there is always a safe lane
+  arenaVents = [];
+  const cx = Math.floor(ARENA_W / 2), cy = Math.floor(ARENA_H / 2);
+  for (const [ox, oy] of [[-5,-3],[5,-3],[-5,3],[5,3],[-7,0],[7,0]]) {
+    const x = cx + ox, y = cy + oy;
+    if (maze[y] && maze[y][x] === 0) {
+      arenaVents.push({ x, y, nextAt: Date.now() + 2500 + Math.random() * 2500, state: 0, t: 0 });
+    }
+  }
+  // Crystals tucked in the corners, worth going out of your way for
+  arenaCrystals = [];
+  for (const [x, y] of [[2, 2], [ARENA_W - 3, 2], [2, ARENA_H - 3], [ARENA_W - 3, ARENA_H - 3]]) {
+    if (maze[y] && maze[y][x] === 0) arenaCrystals.push({ x, y, hp: 1, t: Math.random() * 6 });
+  }
+}
+
+function hurtLeahInArena() {
+  if (leahInvincible > 0) return;
+  handleZombieCollision({ hitCount: 0, x: player.x, y: player.y });
+}
+
+function updateArenaHazards() {
+  if (!inBossFight || bossDefeated) return;
+  checkBossMusic();
+  const now = Date.now();
+  const phase = bossPhase();
+
+  // --- falling rocks ---
+  rockTimer++;
+  const rockGap = phase === 2 ? 90 : 150;
+  if (rockTimer > rockGap) {
+    rockTimer = 0;
+    const drops = phase === 2 ? 3 : 2;
+    for (let i = 0; i < drops; i++) {
+      // aim near Leah but never exactly on her, so it is always dodgeable
+      const x = Math.max(1, Math.min(ARENA_W - 2, player.x + Math.round((Math.random() - 0.5) * 5)));
+      const y = Math.max(1, Math.min(ARENA_H - 2, player.y + Math.round((Math.random() - 0.5) * 5)));
+      if (maze[y] && maze[y][x] === 0) arenaRocks.push({ x, y, t: 0 });
+    }
+  }
+  for (let i = arenaRocks.length - 1; i >= 0; i--) {
+    const r = arenaRocks[i];
+    r.t++;
+    if (r.t === 70) {                       // lands after a clear warning
+      if (!playSfx('rock')) sfxZombieHit();
+      addShake(7);
+      addDust(r.x * CELL_SIZE + CELL_SIZE / 2, r.y * CELL_SIZE + CELL_SIZE, 1);
+      if (player.x === r.x && player.y === r.y) hurtLeahInArena();
+    }
+    if (r.t > 100) arenaRocks.splice(i, 1);
+  }
+
+  // --- floor vents ---
+  for (const v of arenaVents) {
+    if (v.state === 0 && now > v.nextAt) { v.state = 1; v.t = 0; }
+    else if (v.state === 1) {
+      v.t++;
+      if (v.t > 45) {                       // spikes are out
+        v.state = 2; v.t = 0;
+        if (player.x === v.x && player.y === v.y) hurtLeahInArena();
+      }
+    } else if (v.state === 2) {
+      v.t++;
+      if (v.t > 30) { v.state = 0; v.nextAt = now + (phase === 2 ? 2600 : 4200) + Math.random() * 1500; }
+    }
+  }
+}
+
+// A bolt that hits a crystal shatters it and leaves a gift behind
+function hitArenaCrystal(x, y) {
+  const i = arenaCrystals.findIndex(c => Math.hypot(c.x - x, c.y - y) < 1.0);
+  if (i < 0) return false;
+  const c = arenaCrystals[i];
+  arenaCrystals.splice(i, 1);
+  orbBurst(c.x, c.y, true);
+  playFx('fxCollect', c.x, c.y, 1.1);
+  addShake(6);
+  const th = currentLang === 'th';
+  if (Math.random() < 0.5) {
+    buffShield++;
+    showToast(th ? '🛡️ คริสตัลแตกเป็นโล่!' : '🛡️ The crystal became a shield!');
+  } else {
+    rapidUntil = Date.now() + 12000;
+    showToast(th ? '🔥 คริสตัลแตก! ยิงรัวได้ 12 วินาที' : '🔥 Crystal shattered! Rapid fire for 12s');
+  }
+  if (!playSfx('crystal')) sfxGemFound();
+  return true;
+}
+
+function drawArenaHazards() {
+  if (!inBossFight) return;
+  const t = Date.now() / 1000;
+
+  // shootable crystals
+  for (const c of arenaCrystals) {
+    const px = c.x * CELL_SIZE + CELL_SIZE / 2;
+    const py = c.y * CELL_SIZE + CELL_SIZE / 2;
+    const pulse = 0.6 + Math.sin(t * 2 + c.t) * 0.4;
+    const g = ctx.createRadialGradient(px, py, 0, px, py, CELL_SIZE * 0.8);
+    g.addColorStop(0, `rgba(140, 255, 220, ${0.45 * pulse})`);
+    g.addColorStop(1, 'rgba(80, 220, 200, 0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(px - CELL_SIZE * 0.8, py - CELL_SIZE * 0.8, CELL_SIZE * 1.6, CELL_SIZE * 1.6);
+    if (ART.hazards) {
+      const fw = ART.hazards.width / 3, sz = CELL_SIZE * 0.85;
+      ctx.drawImage(ART.hazards, 2 * fw, 0, fw, ART.hazards.height,
+                    px - sz / 2, py - sz / 2 + Math.sin(t * 1.6 + c.t) * 2, sz, sz);
+      continue;
+    }
+    ctx.save();
+    ctx.translate(px, py + Math.sin(t * 1.6 + c.t) * 2);
+    ctx.fillStyle = '#9ffbe0';
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(0, -CELL_SIZE * 0.34);
+    ctx.lineTo(CELL_SIZE * 0.20, 0);
+    ctx.lineTo(0, CELL_SIZE * 0.30);
+    ctx.lineTo(-CELL_SIZE * 0.20, 0);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.restore();
+  }
+
+  // vents: a glowing warning ring, then spikes
+  for (const v of arenaVents) {
+    const px = v.x * CELL_SIZE + CELL_SIZE / 2;
+    const py = v.y * CELL_SIZE + CELL_SIZE / 2;
+    if (v.state === 0) {
+      ctx.strokeStyle = 'rgba(255,140,90,0.30)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(px, py, CELL_SIZE * 0.30, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (v.state === 1) {
+      const k = v.t / 45;
+      ctx.fillStyle = `rgba(255, ${160 - k * 90}, 60, ${0.25 + k * 0.45})`;
+      ctx.beginPath();
+      ctx.arc(px, py, CELL_SIZE * (0.30 + k * 0.16), 0, Math.PI * 2);
+      ctx.fill();
+    } else if (ART.hazards) {
+      const k = Math.min(1, v.t / 8);
+      const fw = ART.hazards.width / 3, sz = CELL_SIZE * 1.1 * (0.5 + k * 0.5);
+      ctx.drawImage(ART.hazards, 1 * fw, 0, fw, ART.hazards.height,
+                    px - sz / 2, py - sz * 0.78, sz, sz);
+    } else {
+      const k = Math.min(1, v.t / 8);
+      ctx.fillStyle = 'rgba(255, 235, 200, 0.95)';
+      ctx.strokeStyle = 'rgba(255,150,80,0.9)';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2;
+        const r = CELL_SIZE * 0.34 * k;
+        ctx.beginPath();
+        ctx.moveTo(px + Math.cos(a) * r * 0.4, py + Math.sin(a) * r * 0.4);
+        ctx.lineTo(px + Math.cos(a) * r, py + Math.sin(a) * r - CELL_SIZE * 0.30 * k);
+        ctx.lineTo(px + Math.cos(a + 0.5) * r * 0.4, py + Math.sin(a + 0.5) * r * 0.4);
+        ctx.closePath();
+        ctx.fill(); ctx.stroke();
+      }
+    }
+  }
+
+  // falling rocks: shadow grows, then the rock hits
+  for (const r of arenaRocks) {
+    const px = r.x * CELL_SIZE + CELL_SIZE / 2;
+    const py = r.y * CELL_SIZE + CELL_SIZE / 2;
+    if (r.t < 70) {
+      const k = r.t / 70;
+      ctx.fillStyle = `rgba(0,0,0,${0.18 + k * 0.35})`;
+      ctx.beginPath();
+      ctx.ellipse(px, py, CELL_SIZE * (0.16 + k * 0.24), CELL_SIZE * (0.07 + k * 0.10), 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = `rgba(255,90,90,${0.35 + Math.sin(r.t / 4) * 0.3})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(px, py, CELL_SIZE * 0.36, 0, Math.PI * 2);
+      ctx.stroke();
+      // the rock itself dropping in
+      const fall = (1 - k) * CELL_SIZE * 7;
+      if (ART.hazards) {
+        const fw = ART.hazards.width / 3, sz = CELL_SIZE * 0.8;
+        ctx.drawImage(ART.hazards, 0, 0, fw, ART.hazards.height,
+                      px - sz / 2, py - fall - sz / 2, sz, sz);
+      } else {
+        ctx.fillStyle = '#5b5148';
+        ctx.beginPath();
+        ctx.arc(px, py - fall, CELL_SIZE * 0.28, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 1.5; ctx.stroke();
+      }
+    } else {
+      const k = (r.t - 70) / 30;
+      ctx.fillStyle = `rgba(90,80,70,${1 - k})`;
+      ctx.beginPath();
+      ctx.arc(px, py, CELL_SIZE * (0.28 + k * 0.15), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
 function buildArena() {
   const W = ARENA_W, H = ARENA_H;
   const m = [];
@@ -2784,7 +3020,8 @@ function enterBossArena() {
       tier: monsterTier(currentLevel), slamReady: Date.now() + 3000
     };
     bossDefeated = false;
-    startEscapeBGM();                     // the fight gets the tense track
+    setupArenaHazards();
+    if (!playTrack('boss')) startEscapeBGM();                     // the fight gets the tense track
     showToast(currentLang === 'th'
       ? '👑 เจ้าถ้ำขวางทางอยู่! หลบหลังเสาแล้วให้พ่อยิงเวท'
       : '👑 The cave king blocks the way! Hide behind the pillars and cast');
@@ -2810,6 +3047,7 @@ function leaveBossArena() {
     dadTrailIdx = 0;
     if (daddyCompanion) { daddyCompanion.displayX = player.x; daddyCompanion.displayY = player.y; }
     mazeSnapshot = null;
+    arenaRocks = []; arenaVents = []; arenaCrystals = [];
     bossDefeated = true;
     startBGM();
     showToast(currentLang === 'th'
@@ -2823,15 +3061,20 @@ function drawSleepingBoss() {
   if (inBossFight || !bossGate || !bossDefeated) return;
   const px = bossGate.x * CELL_SIZE + CELL_SIZE / 2;
   const py = bossGate.y * CELL_SIZE + CELL_SIZE / 2;
-  const sheet = (monsterTier(currentLevel) > 1 && ART.boss2Walk) ? ART.boss2Walk : ART.bossWalk;
-  const size = CELL_SIZE * 2.2;
-  ctx.save();
-  ctx.globalAlpha = 0.85;
-  ctx.translate(px, py + CELL_SIZE * 0.3);
-  ctx.rotate(Math.PI / 2);              // lying on his side
-  ctx.translate(-px, -(py + CELL_SIZE * 0.3));
-  if (sheet) drawWalkFrame(ctx, sheet, 0, px, py + CELL_SIZE * 0.3, size, 1);
-  ctx.restore();
+  if (ART.bossSleep) {
+    const h = CELL_SIZE * 1.5, w = ART.bossSleep.width * h / ART.bossSleep.height;
+    ctx.drawImage(ART.bossSleep, px - w / 2, py + CELL_SIZE * 0.5 - h, w, h);
+  } else {
+    const sheet = (monsterTier(currentLevel) > 1 && ART.boss2Walk) ? ART.boss2Walk : ART.bossWalk;
+    const size = CELL_SIZE * 2.2;
+    ctx.save();
+    ctx.globalAlpha = 0.85;
+    ctx.translate(px, py + CELL_SIZE * 0.3);
+    ctx.rotate(Math.PI / 2);
+    ctx.translate(-px, -(py + CELL_SIZE * 0.3));
+    if (sheet) drawWalkFrame(ctx, sheet, 0, px, py + CELL_SIZE * 0.3, size, 1);
+    ctx.restore();
+  }
   // sleepy z's
   const t = Date.now() / 600;
   ctx.fillStyle = 'rgba(255,255,255,0.65)';
@@ -2856,6 +3099,11 @@ function drawBossGate() {
   g.addColorStop(1, 'rgba(180, 40, 90, 0)');
   ctx.fillStyle = g;
   ctx.fillRect(px - CELL_SIZE * 1.4, py - CELL_SIZE * 1.4, CELL_SIZE * 2.8, CELL_SIZE * 2.8);
+  if (ART.bossGateArt) {
+    const h = CELL_SIZE * 1.9, w = ART.bossGateArt.width * h / ART.bossGateArt.height;
+    ctx.drawImage(ART.bossGateArt, px - w / 2, py + CELL_SIZE * 0.55 - h + Math.sin(t * 1.3) * 2, w, h);
+    return;
+  }
   ctx.save();
   ctx.font = `${Math.round(CELL_SIZE * 0.7)}px Arial`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -2882,11 +3130,12 @@ function updateBoss() {
   if (inBossFight && Date.now() > (boss.slamReady || 0)) {
     boss.slamReady = Date.now() + (boss.tier > 1 ? 4200 : 5600);
     addShake(14);
-    orbBurst(boss.x, boss.y, true);
+    if (ART.fxSlam) playFx('fxSlam', boss.x, boss.y, 2.2);
+    else orbBurst(boss.x, boss.y, true);
     for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]) {
       monShots.push({ x: boss.x, y: boss.y, vx: dx * 0.13, vy: dy * 0.13, life: 90 });
     }
-    if (!playSfx('hit')) sfxZombieHit();
+    if (!playSfx('slam')) sfxZombieHit();
   }
 
   const path = findPath(boss.x, boss.y, player.x, player.y);
@@ -4425,7 +4674,10 @@ function draw() {
       
       // Photo-real cave tiles when the textures are available
       if (ART.wall && ART.floor) {
-        const tex = cell === 1 ? ART.wall : ART.floor;
+        const arenaTex = inBossFight && ART.bossFloor && ART.bossWall;
+        const tex = cell === 1
+          ? (arenaTex ? ART.bossWall : ART.wall)
+          : (arenaTex ? ART.bossFloor : ART.floor);
         // Rotate some cells so the repetition is not obvious
         const rot = ((x * 7 + y * 13) % 4) * Math.PI / 2;
         ctx.save();
@@ -4592,7 +4844,8 @@ function draw() {
   if (daddyCompanion) drawDaddyCompanion();
   
   // Draw sword slash effect
-  if (!frozen) { updateDadOrbs(); updateBoss(); updateMonShots(); }
+  if (!frozen) { updateDadOrbs(); updateBoss(); updateMonShots(); updateArenaHazards(); }
+  drawArenaHazards();
   drawMonShots();
   updateWarpAnim(16);
   drawWarpBeam();
@@ -8546,6 +8799,11 @@ function updateDadOrbs() {
       dadOrbs.splice(i, 1);
       continue;
     }
+    // Shatter an arena crystal
+    if (inBossFight && hitArenaCrystal(o.x, o.y)) {
+      dadOrbs.splice(i, 1);
+      continue;
+    }
     // Hit the boss
     if (boss && !bossDefeated && Math.hypot(boss.x - o.x, boss.y - o.y) < 2.0) {
       hitBoss();
@@ -9037,6 +9295,7 @@ function restartGame() {
   warpAnim = null;
   inBossFight = false;
   mazeSnapshot = null;
+  arenaRocks = []; arenaVents = []; arenaCrystals = [];
   updateWarpBtn();
   
   document.getElementById('timer').textContent = '--:--';
