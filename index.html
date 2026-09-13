@@ -1230,9 +1230,10 @@ const SFX_FILES = {
   wrong:   'sfx-wrong.mp3',
   magic:   'sfx-magic.mp3',
   hit:     'sfx-hit.mp3',
-  win:     'sfx-win.mp3'
+  win:     'sfx-win.mp3',
+  bolt:    'sfx-bolt.mp3'
 };
-const SFX_VOL = { collect: 0.55, correct: 0.6, wrong: 0.5, magic: 0.5, hit: 0.55, win: 0.7 };
+const SFX_VOL = { collect: 0.55, correct: 0.6, wrong: 0.5, magic: 0.5, hit: 0.55, win: 0.7, bolt: 0.5 };
 const sfxPool = {};
 const SFX_VOICES = 3;
 
@@ -2873,7 +2874,7 @@ function updateWarpBtn() {
 // Teleports to the farthest question still unanswered, or to the exit when
 // every question is done - so it is useful at any point in the level.
 function useWarp() {
-  if (warpCharges <= 0) return;
+  if (warpCharges <= 0 || warpAnim) return;
   if (gameState !== 'playing' && gameState !== 'escape') return;
   if (currentQuestionIndex !== -1) return;
 
@@ -2900,20 +2901,113 @@ function useWarp() {
     ? (th ? '🌀 วาร์ปไปที่ประตูทางออก!' : '🌀 Warped to the exit!')
     : (th ? '🌀 วาร์ปไปหาคำถามที่ไกลที่สุด!' : '🌀 Warped to the farthest question!'));
 
-  setTimeout(() => {
-    player.x = dest.x; player.y = dest.y;
-    player.displayX = dest.x; player.displayY = dest.y;
-    // Start the breadcrumb trail fresh here, otherwise the old crumbs drag
-    // Daddy back across the whole maze
-    leahTrail = [{ x: dest.x, y: dest.y }];
+  // Land a couple of steps away rather than right on top of it, so she still
+  // walks the last stretch herself
+  const landing = landingNear(dest);
+  warpAnim = { stage: 'rise', t: 0, dest: landing };
+}
+
+// Walk outward from a cell to find open floor a few steps away
+function landingNear(cell) {
+  const path = findPath(cell.x, cell.y, player.x, player.y);
+  if (path && path.length >= 2) {
+    return path[Math.min(2, path.length - 1)];
+  }
+  for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+    const nx = cell.x + dx, ny = cell.y + dy;
+    if (maze[ny] && maze[ny][nx] !== 1) return { x: nx, y: ny };
+  }
+  return cell;
+}
+
+// ---- the warp flight: lifted on a beam, then set down again ----
+let warpAnim = null;   // { stage:'rise'|'fall', t, dest }
+const WARP_RISE_MS = 700;
+const WARP_FALL_MS = 620;
+const WARP_HEIGHT = 4.2;   // cells
+
+function warpLiftCells() {
+  if (!warpAnim) return 0;
+  if (warpAnim.stage === 'rise') {
+    const k = Math.min(1, warpAnim.t / WARP_RISE_MS);
+    return WARP_HEIGHT * (k * k);            // accelerates upward
+  }
+  const k = Math.min(1, warpAnim.t / WARP_FALL_MS);
+  return WARP_HEIGHT * (1 - k) * (1 - k);    // decelerates on the way down
+}
+
+function warpAlpha() {
+  if (!warpAnim) return 1;
+  const k = warpAnim.stage === 'rise'
+    ? Math.min(1, warpAnim.t / WARP_RISE_MS)
+    : 1 - Math.min(1, warpAnim.t / WARP_FALL_MS);
+  return Math.max(0.15, 1 - k * 0.85);
+}
+
+function updateWarpAnim(dt) {
+  if (!warpAnim) return;
+  warpAnim.t += dt;
+  if (warpAnim.stage === 'rise' && warpAnim.t >= WARP_RISE_MS) {
+    // Top of the flight - move her across, then bring her down
+    const d = warpAnim.dest;
+    player.x = d.x; player.y = d.y;
+    player.displayX = d.x; player.displayY = d.y;
+    leahTrail = [{ x: d.x, y: d.y }];
     dadTrailIdx = 0;
-    if (daddyCompanion) { daddyCompanion.displayX = dest.x; daddyCompanion.displayY = dest.y; }
-    if (coopMode) { dadCtl.x = dest.x; dadCtl.y = dest.y; }
-    playFx('fxCollect', dest.x, dest.y, 1.3);
-    addShake(8);
-    const qPos = questionPositions.find(q => q.x === dest.x && q.y === dest.y && !q.answered);
-    if (qPos) setTimeout(() => showQuestion(qPos.index), 350);
-  }, 520);
+    if (daddyCompanion) { daddyCompanion.displayX = d.x; daddyCompanion.displayY = d.y; }
+    if (coopMode) { dadCtl.x = d.x; dadCtl.y = d.y; }
+    warpAnim = { stage: 'fall', t: 0, dest: d };
+    if (!playSfx('magic')) sfxMagic();
+  } else if (warpAnim.stage === 'fall' && warpAnim.t >= WARP_FALL_MS) {
+    // Touchdown
+    const d = warpAnim.dest;
+    warpAnim = null;
+    playFx('fxCollect', d.x, d.y, 1.3);
+    addDust(d.x * CELL_SIZE + CELL_SIZE / 2, d.y * CELL_SIZE + CELL_SIZE, 1);
+    addShake(10);
+    sfxStep();
+  }
+}
+
+// The beam of light that carries her
+function drawWarpBeam() {
+  if (!warpAnim) return;
+  const px = player.displayX * CELL_SIZE + CELL_SIZE / 2;
+  const baseY = player.displayY * CELL_SIZE + CELL_SIZE / 2;
+  const k = warpAnim.stage === 'rise'
+    ? Math.min(1, warpAnim.t / WARP_RISE_MS)
+    : 1 - Math.min(1, warpAnim.t / WARP_FALL_MS);
+  const strength = Math.sin(Math.min(1, k) * Math.PI) * 0.9 + 0.1;
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  // column of light reaching up out of the frame
+  const w = CELL_SIZE * (0.5 + strength * 0.45);
+  const g = ctx.createLinearGradient(px, baseY - CELL_SIZE * 9, px, baseY + CELL_SIZE * 0.4);
+  g.addColorStop(0, 'rgba(190,140,255,0)');
+  g.addColorStop(0.45, `rgba(205,165,255,${0.40 * strength})`);
+  g.addColorStop(1, `rgba(255,245,255,${0.55 * strength})`);
+  ctx.fillStyle = g;
+  ctx.fillRect(px - w / 2, baseY - CELL_SIZE * 9, w, CELL_SIZE * 9.4);
+
+  // glowing ring on the floor
+  ctx.strokeStyle = `rgba(210,170,255,${0.75 * strength})`;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.ellipse(px, baseY + CELL_SIZE * 0.42, CELL_SIZE * (0.30 + strength * 0.25),
+              CELL_SIZE * (0.12 + strength * 0.08), 0, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // motes spiralling along the beam
+  const t = Date.now() / 220;
+  for (let i = 0; i < 9; i++) {
+    const f = (i / 9 + t) % 1;
+    const y = baseY + CELL_SIZE * 0.4 - f * CELL_SIZE * 6;
+    const r = Math.cos(t * 2 + i) * CELL_SIZE * 0.28 * (1 - f);
+    ctx.fillStyle = `rgba(235,215,255,${(1 - f) * strength})`;
+    ctx.beginPath(); ctx.arc(px + r, y, 2.4 * (1 - f) + 0.6, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
 }
 
 function collectPickup(u) {
@@ -4197,6 +4291,8 @@ function draw() {
   
   // Draw sword slash effect
   if (!frozen) { updateDadOrbs(); updateBoss(); }
+  updateWarpAnim(16);
+  drawWarpBeam();
   drawPickups();
   drawBoss();
   drawFx();
@@ -4260,6 +4356,15 @@ function drawLeah() {
   if (ART.leahWalk) {
     // While swinging, drawLeahLunge() renders her instead - don't draw twice
     if (leahAttack) return;
+    if (warpAnim) {
+      const lift = warpLiftCells() * CELL_SIZE;
+      ctx.save();
+      ctx.globalAlpha = warpAlpha();
+      drawWalkFrame(ctx, ART.leahWalk, 1, px, py + CELL_SIZE * 0.52 - lift,
+                    CELL_SIZE * 1.35, gait.leah.face);
+      ctx.restore();
+      return;
+    }
     const g = gait.leah;
     const moving = stepGait(g, player.displayX, player.displayY);
     const frame = moving ? Math.floor(g.phase / STRIDE) : 0;
@@ -6131,6 +6236,7 @@ function attackZombie() {
 
 function movePlayer(dx, dy) {
   if (typeof tutorOnMove === 'function') tutorOnMove();
+  if (warpAnim) return;   // she is in the air
   if (gameState !== 'playing' && gameState !== 'escape') return;
   if (currentQuestionIndex !== -1) return;
   
@@ -8060,7 +8166,7 @@ function fireDadOrb(force) {
   }
   daddyCompanion.mode = 'wand';
   wandRaise = { frames: 0 };
-  sfxMagic();
+  if (!playSfx('bolt')) sfxMagic();
   setTimeout(() => {
     if (daddyCompanion && daddyCompanion.mode === 'wand' && magicLightTimer <= 0 && !rescueActive) {
       daddyCompanion.mode = 'follow';
@@ -8534,6 +8640,7 @@ function restartGame() {
   dadTrailIdx = 0;
   hintsLeft = 1;
   warpCharges = 0;
+  warpAnim = null;
   updateWarpBtn();
   
   document.getElementById('timer').textContent = '--:--';
