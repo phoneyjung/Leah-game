@@ -51,6 +51,7 @@ const PRECACHE = [
   './sfx-hit.mp3',
   './sfx-win.mp3',
   './sfx-bolt.mp3',
+  './sfx-warp.mp3',
   './win1.mp4',
   './win2.mp4',
   './win3.mp4',

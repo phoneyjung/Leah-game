@@ -1233,9 +1233,10 @@ const SFX_FILES = {
   magic:   'sfx-magic.mp3',
   hit:     'sfx-hit.mp3',
   win:     'sfx-win.mp3',
-  bolt:    'sfx-bolt.mp3'
+  bolt:    'sfx-bolt.mp3',
+  warp:    'sfx-warp.mp3'
 };
-const SFX_VOL = { collect: 0.55, correct: 0.6, wrong: 0.5, magic: 0.5, hit: 0.55, win: 0.7, bolt: 0.5 };
+const SFX_VOL = { collect: 0.55, correct: 0.6, wrong: 0.5, magic: 0.5, hit: 0.55, win: 0.7, bolt: 0.5, warp: 0.6 };
 const sfxPool = {};
 const SFX_VOICES = 3;
 
@@ -2894,7 +2895,7 @@ function useWarp() {
   // Daddy performs the spell
   dadCastUntil = Date.now() + 620;
   if (daddyCompanion) { daddyCompanion.mode = 'wand'; wandRaise = { frames: 0 }; }
-  sfxMagic();
+  if (!playSfx('warp')) sfxMagic();
   playFx('fxCollect', player.x, player.y, 1.3);
   addShake(8);
 
@@ -2923,33 +2924,71 @@ function landingNear(cell) {
 }
 
 // ---- the warp flight: lifted on a beam, then set down again ----
-let warpAnim = null;   // { stage:'rise'|'fall', t, dest }
-const WARP_RISE_MS = 700;
-const WARP_FALL_MS = 620;
-const WARP_HEIGHT = 4.2;   // cells
+let warpAnim = null;   // { stage:'rise'|'hover'|'fall', t, dest }
+const WARP_RISE_MS  = 1400;   // floats up slowly
+const WARP_HOVER_MS = 550;    // hangs at the top for a beat
+const WARP_FALL_MS  = 1250;   // spins back down
+const WARP_HEIGHT = 5.0;      // cells
 
 function warpLiftCells() {
   if (!warpAnim) return 0;
   if (warpAnim.stage === 'rise') {
     const k = Math.min(1, warpAnim.t / WARP_RISE_MS);
-    return WARP_HEIGHT * (k * k);            // accelerates upward
+    // ease-out so she lifts off gently and drifts the last stretch
+    const base = WARP_HEIGHT * (1 - Math.pow(1 - k, 2.2));
+    // a soft bob on the way up, fading as she settles
+    return base + Math.sin(k * Math.PI * 3.2) * 0.22 * (1 - k);
+  }
+  if (warpAnim.stage === 'hover') {
+    const k = warpAnim.t / WARP_HOVER_MS;
+    return WARP_HEIGHT + Math.sin(k * Math.PI * 2) * 0.18;
   }
   const k = Math.min(1, warpAnim.t / WARP_FALL_MS);
-  return WARP_HEIGHT * (1 - k) * (1 - k);    // decelerates on the way down
+  return WARP_HEIGHT * (1 - Math.pow(k, 1.7));   // eases into the landing
+}
+
+// She drifts a little side to side going up, then spins coming down
+function warpSway() {
+  if (!warpAnim) return 0;
+  if (warpAnim.stage === 'rise') {
+    const k = Math.min(1, warpAnim.t / WARP_RISE_MS);
+    return Math.sin(k * Math.PI * 2.4) * 0.20 * (1 - k * 0.5);
+  }
+  if (warpAnim.stage === 'hover') {
+    return Math.sin(warpAnim.t / WARP_HOVER_MS * Math.PI * 2) * 0.12;
+  }
+  return 0;
+}
+
+function warpSpin() {
+  if (!warpAnim) return 0;
+  if (warpAnim.stage === 'rise') {
+    const k = Math.min(1, warpAnim.t / WARP_RISE_MS);
+    return k * 0.5;                     // a gentle lean as she lifts
+  }
+  if (warpAnim.stage === 'hover') {
+    return 0.5 + (warpAnim.t / WARP_HOVER_MS) * 1.4;
+  }
+  const k = Math.min(1, warpAnim.t / WARP_FALL_MS);
+  // two full turns, slowing to upright exactly as she lands
+  return 1.9 + (1 - Math.pow(1 - k, 2)) * (Math.PI * 4 - 1.9);
 }
 
 function warpAlpha() {
   if (!warpAnim) return 1;
+  if (warpAnim.stage === 'hover') return 0.28;
   const k = warpAnim.stage === 'rise'
     ? Math.min(1, warpAnim.t / WARP_RISE_MS)
     : 1 - Math.min(1, warpAnim.t / WARP_FALL_MS);
-  return Math.max(0.15, 1 - k * 0.85);
+  return Math.max(0.28, 1 - k * 0.72);
 }
 
 function updateWarpAnim(dt) {
   if (!warpAnim) return;
   warpAnim.t += dt;
   if (warpAnim.stage === 'rise' && warpAnim.t >= WARP_RISE_MS) {
+    warpAnim = { stage: 'hover', t: 0, dest: warpAnim.dest };
+  } else if (warpAnim.stage === 'hover' && warpAnim.t >= WARP_HOVER_MS) {
     // Top of the flight - move her across, then bring her down
     const d = warpAnim.dest;
     player.x = d.x; player.y = d.y;
@@ -2959,7 +2998,6 @@ function updateWarpAnim(dt) {
     if (daddyCompanion) { daddyCompanion.displayX = d.x; daddyCompanion.displayY = d.y; }
     if (coopMode) { dadCtl.x = d.x; dadCtl.y = d.y; }
     warpAnim = { stage: 'fall', t: 0, dest: d };
-    if (!playSfx('magic')) sfxMagic();
   } else if (warpAnim.stage === 'fall' && warpAnim.t >= WARP_FALL_MS) {
     // Touchdown
     const d = warpAnim.dest;
@@ -2979,12 +3017,14 @@ function drawWarpBeam() {
     const px = player.displayX * CELL_SIZE + CELL_SIZE / 2;
     const footY = player.displayY * CELL_SIZE + CELL_SIZE * 0.95;
     // Rising plays frames 0-2 as the beam builds, falling plays 2-4 as it fades
-    const k = warpAnim.stage === 'rise'
-      ? Math.min(1, warpAnim.t / WARP_RISE_MS)
-      : Math.min(1, warpAnim.t / WARP_FALL_MS);
-    const frame = warpAnim.stage === 'rise'
-      ? Math.min(2, Math.floor(k * 3))
-      : Math.min(4, 2 + Math.floor(k * 3));
+    let frame;
+    if (warpAnim.stage === 'rise') {
+      frame = Math.min(2, Math.floor((warpAnim.t / WARP_RISE_MS) * 3));
+    } else if (warpAnim.stage === 'hover') {
+      frame = 2;
+    } else {
+      frame = Math.min(4, 2 + Math.floor((warpAnim.t / WARP_FALL_MS) * 3));
+    }
     const fw = ART.fxWarp.width / 5;
     const h = CELL_SIZE * 7.5;
     const w = fw * h / ART.fxWarp.height;
@@ -2998,9 +3038,9 @@ function drawWarpBeam() {
 
   const px = player.displayX * CELL_SIZE + CELL_SIZE / 2;
   const baseY = player.displayY * CELL_SIZE + CELL_SIZE / 2;
-  const k = warpAnim.stage === 'rise'
-    ? Math.min(1, warpAnim.t / WARP_RISE_MS)
-    : 1 - Math.min(1, warpAnim.t / WARP_FALL_MS);
+  const k = warpAnim.stage === 'rise' ? Math.min(1, warpAnim.t / WARP_RISE_MS)
+          : warpAnim.stage === 'hover' ? 1
+          : 1 - Math.min(1, warpAnim.t / WARP_FALL_MS);
   const strength = Math.sin(Math.min(1, k) * Math.PI) * 0.9 + 0.1;
 
   ctx.save();
@@ -4382,10 +4422,16 @@ function drawLeah() {
     if (leahAttack) return;
     if (warpAnim) {
       const lift = warpLiftCells() * CELL_SIZE;
+      const sway = warpSway() * CELL_SIZE;
+      const cxp = px + sway;
+      const cyp = py + CELL_SIZE * 0.52 - lift;
       ctx.save();
       ctx.globalAlpha = warpAlpha();
-      drawWalkFrame(ctx, ART.leahWalk, 1, px, py + CELL_SIZE * 0.52 - lift,
-                    CELL_SIZE * 1.35, gait.leah.face);
+      // spin around her middle, not her feet, so she tumbles nicely
+      ctx.translate(cxp, cyp - CELL_SIZE * 0.55);
+      ctx.rotate(warpSpin());
+      ctx.translate(-cxp, -(cyp - CELL_SIZE * 0.55));
+      drawWalkFrame(ctx, ART.leahWalk, 1, cxp, cyp, CELL_SIZE * 1.35, gait.leah.face);
       ctx.restore();
       return;
     }
