@@ -990,6 +990,7 @@ const ART_FILES = {
   powerups: 'art-powerups.png', // lantern, boots, shield
   reward4: 'art-reward4.png',
   reward5: 'art-reward5.png',
+  reward6: 'art-reward6.png',   // optional: the cave king's crown
   exitArt: 'art-exit.png',
   leahHurt: 'art-leah-hurt.png',
   warpArt: 'art-warp.png',        // the warp stone pickup
@@ -7678,8 +7679,70 @@ function drawRainbowHeart() {
     wctx.restore();
   }
 
+  // Level 6: the cave king's crown, drawn in code until art exists
+  function drawCrown(cx, cy, scale, alpha) {
+    wctx.save(); wctx.globalAlpha = alpha;
+    const s = scale, t = Date.now() / 700;
+    const glow = wctx.createRadialGradient(cx, cy, 0, cx, cy, 90 * s);
+    glow.addColorStop(0, 'rgba(255,225,140,0.6)');
+    glow.addColorStop(1, 'rgba(255,190,60,0)');
+    wctx.fillStyle = glow;
+    wctx.fillRect(cx - 90 * s, cy - 90 * s, 180 * s, 180 * s);
+
+    const gold = wctx.createLinearGradient(cx - 50 * s, cy - 40 * s, cx + 50 * s, cy + 40 * s);
+    gold.addColorStop(0, '#8c6212'); gold.addColorStop(0.35, '#ffe98a');
+    gold.addColorStop(0.6, '#f0bf3c'); gold.addColorStop(1, '#7d5510');
+
+    // band
+    wctx.fillStyle = gold;
+    wctx.fillRect(cx - 44 * s, cy + 16 * s, 88 * s, 18 * s);
+    // five points
+    wctx.beginPath();
+    wctx.moveTo(cx - 44 * s, cy + 18 * s);
+    const pts = [-44, -22, 0, 22, 44];
+    const tops = [-16, -34, -46, -34, -16];
+    for (let i = 0; i < pts.length; i++) {
+      wctx.lineTo(cx + pts[i] * s, cy + tops[i] * s);
+      if (i < pts.length - 1) wctx.lineTo(cx + (pts[i] + pts[i + 1]) / 2 * s, cy + 6 * s);
+    }
+    wctx.lineTo(cx + 44 * s, cy + 18 * s);
+    wctx.closePath();
+    wctx.fillStyle = gold; wctx.fill();
+    wctx.strokeStyle = 'rgba(255,255,220,0.75)'; wctx.lineWidth = 1.6 * s; wctx.stroke();
+
+    // gems on the points
+    const hues = [320, 280, 200, 280, 320];
+    for (let i = 0; i < pts.length; i++) {
+      const hue = (hues[i] + t * 25) % 360;
+      wctx.fillStyle = `hsla(${hue}, 90%, 68%, 0.95)`;
+      wctx.shadowColor = `hsl(${hue}, 90%, 62%)`; wctx.shadowBlur = 14 * s;
+      wctx.beginPath();
+      wctx.arc(cx + pts[i] * s, cy + (tops[i] + 9) * s, 5.5 * s, 0, Math.PI * 2);
+      wctx.fill();
+    }
+    wctx.shadowBlur = 0;
+    // band jewels
+    wctx.fillStyle = '#ff6fae';
+    for (let i = -1; i <= 1; i++) {
+      wctx.beginPath();
+      wctx.arc(cx + i * 22 * s, cy + 25 * s, 4 * s, 0, Math.PI * 2);
+      wctx.fill();
+    }
+    // sparkles
+    for (let i = 0; i < 5; i++) {
+      const a = t + i * 1.25, r = 58 * s + Math.sin(t * 2 + i) * 8 * s;
+      wctx.fillStyle = `rgba(255,250,210,${0.4 + 0.4 * Math.sin(t * 3 + i)})`;
+      wctx.beginPath();
+      wctx.arc(cx + Math.cos(a) * r, cy + Math.sin(a) * r * 0.7, 2.6 * s, 0, Math.PI * 2);
+      wctx.fill();
+    }
+    wctx.restore();
+  }
+
   function drawReward(cx, cy, scale, alpha) {
-    const art = currentLevel === 4 ? ART.reward4 : currentLevel === 5 ? ART.reward5 : null;
+    const art = currentLevel === 4 ? ART.reward4
+              : currentLevel === 5 ? ART.reward5
+              : currentLevel === 6 ? ART.reward6 : null;
     if (art) {
       wctx.save(); wctx.globalAlpha = alpha;
       const h = 124 * scale, w = art.width * h / art.height;
@@ -7690,6 +7753,7 @@ function drawRainbowHeart() {
     }
     if (currentLevel === 4) { drawGreatStar(cx, cy, scale, alpha); return; }
     if (currentLevel === 5) { drawTrophy(cx, cy, scale, alpha); return; }
+    if (currentLevel === 6) { drawCrown(cx, cy, scale, alpha); return; }
     if (currentLevel === 3 && ART.plush) {
       wctx.save(); wctx.globalAlpha = alpha;
       const h = 116 * scale, w = ART.plush.width * h / ART.plush.height;
