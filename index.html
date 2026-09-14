@@ -2812,6 +2812,7 @@ function hurtLeahInArena() {
 function updateArenaHazards() {
   if (!inBossFight || bossDefeated) return;
   checkBossMusic();
+  checkStuckHint();
   const now = Date.now();
   const phase = bossPhase();
 
@@ -3107,6 +3108,8 @@ function enterBossArena() {
       armored, bounces: 0
     };
     bossDefeated = false;
+    bossFightStart = Date.now();
+    nextAutoHint = Date.now() + 60000;
     setupArenaHazards();
     if (!playTrack('boss')) startEscapeBGM();                     // the fight gets the tense track
     showToast(currentLang === 'th'
@@ -3261,12 +3264,43 @@ function bossArmorBounce() {
 }
 
 let hintVentUntil = 0;
+let bossFightStart = 0;    // when the current fight began
+let nextAutoHint = 0;      // when Daddy speaks up next, unprompted
+
+// Daddy notices when she has been stuck a while and says what to do
+function bossStuckHint() {
+  if (!boss || bossDefeated || !inBossFight) return;
+  const th = currentLang === 'th';
+  const msg = boss.armored
+    ? (th ? '🧙 พ่อโฟน: "ตีไม่เข้าหรอกลูก ล่อมันไปยืนบนหนาม แล้วรีบหลบ!"'
+          : '🧙 Daddy: "Hitting won\'t work. Lure him onto the spikes, then run!"')
+    : (th ? '🧙 พ่อโฟน: "ยิงเวทใส่มันเรื่อยๆ นะลูก หลบหลังเสาได้!"'
+          : '🧙 Daddy: "Keep casting at him. Hide behind the pillars!"');
+  showToast(msg);
+  speak(th
+    ? (boss.armored ? 'ตีไม่เข้าหรอกลูก ล่อมันไปยืนบนหนาม แล้วรีบหลบ' : 'ยิงเวทใส่มันเรื่อยๆ นะลูก')
+    : (boss.armored ? 'Lure him onto the spikes, then run' : 'Keep casting at him'));
+  if (boss.armored) hintVentUntil = Date.now() + 5000;
+  dadCastUntil = Date.now() + 620;
+  if (daddyCompanion) { daddyCompanion.mode = 'wand'; wandRaise = { frames: 0 }; }
+}
+
+function checkStuckHint() {
+  if (!inBossFight || bossDefeated || !boss) return;
+  if (!bossFightStart) return;
+  const elapsed = Date.now() - bossFightStart;
+  if (elapsed < 60000) return;                 // give her a full minute first
+  if (Date.now() < nextAutoHint) return;
+  nextAutoHint = Date.now() + 45000;           // then a nudge every 45s
+  bossStuckHint();
+}
 
 // Damage that comes from the arena itself - this is what actually works
 function bossTrapHit(kind) {
   if (!boss || bossDefeated) return false;
   if (Date.now() < (boss.trapImmuneUntil || 0)) return false;
   boss.trapImmuneUntil = Date.now() + 900;
+  nextAutoHint = Date.now() + 60000;   // she understands, stop nagging
   boss.hp--;
   boss.hurtUntil = Date.now() + 1100;
   addShake(16);
@@ -9032,17 +9066,35 @@ function fireDadOrb(force) {
 
   const ox = daddyCompanion.displayX, oy = daddyCompanion.displayY;
   const cx = Math.round(ox), cy = Math.round(oy);
-  const route = routeToMonster(cx, cy, force ? ORB_RANGE + 4 : AUTO_ORB_RANGE);
-  if (!route && !force) return false;
 
-  // With no route he fires straight ahead, in whichever of the four
-  // directions he last moved. Refuse if that way is solid stone.
-  let aimDx = dadFacing.dx, aimDy = dadFacing.dy;
-  if (!route) {
+  // The bolt always travels in a straight line - no curving round corners.
+  // Look down each of the four directions for a monster with clear floor
+  // between here and there, and fire that way.
+  const range = force ? ORB_RANGE : AUTO_ORB_RANGE;
+  let aimDx = 0, aimDy = 0, bestDist = 99;
+  for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+    let tx = cx, ty = cy;
+    for (let step = 1; step <= range; step++) {
+      tx += dx; ty += dy;
+      if (!maze[ty] || maze[ty][tx] === undefined || maze[ty][tx] === 1) break;
+      const hitMon = zombies.some(z => z.alive && z.x === tx && z.y === ty);
+      const hitBossHere = boss && !bossDefeated &&
+                          Math.max(Math.abs(boss.x - tx), Math.abs(boss.y - ty)) <= 1;
+      if (hitMon || hitBossHere) {
+        if (step < bestDist) { bestDist = step; aimDx = dx; aimDy = dy; }
+        break;
+      }
+    }
+  }
+  const hasTarget = aimDx !== 0 || aimDy !== 0;
+  if (!hasTarget && !force) return false;
+
+  // Nothing lined up: fire the way he last walked, unless that is solid stone
+  if (!hasTarget) {
+    aimDx = dadFacing.dx; aimDy = dadFacing.dy;
     if (!aimDx && !aimDy) aimDx = gait.dad.face >= 0 ? 1 : -1;
     const fx = cx + aimDx, fy = cy + aimDy;
     if (!maze[fy] || maze[fy][fx] === undefined || maze[fy][fx] === 1) {
-      // try the other three before giving up
       const alt = [[1,0],[-1,0],[0,1],[0,-1]].find(([ax, ay]) =>
         maze[cy + ay] && maze[cy + ay][cx + ax] !== undefined && maze[cy + ay][cx + ax] !== 1);
       if (!alt) {
@@ -9057,12 +9109,7 @@ function fireDadOrb(force) {
   orbCooldown = Date.now() + (force && Date.now() < rapidUntil ? 450 : ORB_COOLDOWN_MS);
   dadCastUntil = Date.now() + 620;
 
-  if (route) {
-    // Guided bolt: it turns corners so a cornered player can still fight back
-    dadOrbs.push({ x: ox, y: oy - 0.35, path: route.path.slice(), i: 0, vx: 0, vy: 0, life: 160 });
-  } else {
-    dadOrbs.push({ x: ox, y: oy - 0.35, vx: aimDx * ORB_SPEED, vy: aimDy * ORB_SPEED, life: 70 });
-  }
+  dadOrbs.push({ x: ox, y: oy - 0.35, vx: aimDx * ORB_SPEED, vy: aimDy * ORB_SPEED, life: 70 });
   daddyCompanion.mode = 'wand';
   wandRaise = { frames: 0 };
   if (!playSfx('bolt')) sfxMagic();
