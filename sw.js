@@ -3,7 +3,7 @@
 // This means a fresh upload to GitHub Pages is ALWAYS picked up when online,
 // while the game still runs with no signal at all.
 
-const CACHE = 'leah-cave-v1';
+const CACHE = 'leah-cave-v2';
 const PRECACHE = [
   './',
   './index.html',
@@ -38,17 +38,12 @@ const PRECACHE = [
   './art-fx-spikes.jpg',
   './art-fx-rockfall.jpg',
   './art-cave5.jpg',
-  './art-win7.jpg',
-  './art-win8.jpg',
-  './art-win9.jpg',
   './bgm-deep.mp3',
   './bgm-victory.mp3',
   './art-reward6.png',
   './art-mon2-hurt.png',
-  './art-win4.jpg',
-  './art-win5.jpg',
-  './art-win6.jpg',
   './sfx-step.mp3',
+  './sfx-slash.mp3',
   './art-boss-floor.jpg',
   './art-boss-wall.jpg',
   './art-boss-gate.png',
@@ -87,6 +82,12 @@ const PRECACHE = [
   './win1.mp4',
   './win2.mp4',
   './win3.mp4',
+  './win4.mp4',
+  './win5.mp4',
+  './win6.mp4',
+  './win7.mp4',
+  './win8.mp4',
+  './win9.mp4',
   './icon-192.png',
   './icon-512.png'
 ];

@@ -1278,13 +1278,14 @@ const SFX_FILES = {
   hit:     'sfx-hit.mp3',
   win:     'sfx-win.mp3',
   step:    'sfx-step.mp3',
+  slash:   'sfx-slash.mp3',   // Leah's lantern connecting
   slam:    'sfx-slam.mp3',
   rock:    'sfx-rock.mp3',
   crystal: 'sfx-crystal.mp3',
   bolt:    'sfx-bolt.mp3',
   warp:    'sfx-warp.mp3'
 };
-const SFX_VOL = { collect: 0.55, correct: 0.6, wrong: 0.5, magic: 0.5, hit: 0.55, win: 0.7, bolt: 0.5, warp: 0.6, slam: 0.6, rock: 0.5, crystal: 0.55, step: 0.22 };
+const SFX_VOL = { collect: 0.55, correct: 0.6, wrong: 0.5, magic: 0.5, hit: 0.55, win: 0.7, bolt: 0.5, warp: 0.6, slam: 0.6, rock: 0.5, crystal: 0.55, step: 0.22, slash: 0.6 };
 const sfxPool = {};
 const SFX_VOICES = 3;
 
@@ -7012,6 +7013,7 @@ function attackZombie() {
     const dirX = Math.abs(bdx) >= Math.abs(bdy) ? Math.sign(bdx) : 0;
     const dirY = dirX === 0 ? Math.sign(bdy) : 0;
     leahAttack = { frames: 0, dirX: dirX || leahFacing.dx, dirY: dirY, hit: true };
+    if (!playSfx('slash')) sfxZombieHit();
     hitBoss();
     return;
   }
@@ -7053,7 +7055,7 @@ function attackZombie() {
   if (target.hitCount === 1) {
     // First hit - knock zombie back and stun briefly
     target.moveTimer = -ZOMBIE_MOVE_INTERVAL; // stun (resets timer back)
-    sfxZombieHit();
+    if (!playSfx('slash')) sfxZombieHit();
     showToast(t('toastZombieAttacked') || '💥 Leah hit the zombie!');
   } else {
     // Second hit - daddy comes to finish it!
@@ -7455,9 +7457,14 @@ function loseGame(message) {
 // ==================== RAINBOW HEART ANIMATION ====================
 // One short celebration clip per level. If a file is missing or the browser
 // refuses to play it, the hand-drawn animation runs instead.
-const WIN_CLIPS = { 1: 'win1.mp4', 2: 'win2.mp4', 3: 'win3.mp4' };
-// No clip for the deeper levels yet, so a painted finale scene stands in
-const WIN_STILLS = { 4: 'art-win4.jpg', 5: 'art-win5.jpg', 6: 'art-win6.jpg', 7: 'art-win7.jpg', 8: 'art-win8.jpg', 9: 'art-win9.jpg' };
+const WIN_CLIPS = {
+  1: 'win1.mp4', 2: 'win2.mp4', 3: 'win3.mp4',
+  4: 'win4.mp4', 5: 'win5.mp4', 6: 'win6.mp4',
+  7: 'win7.mp4', 8: 'win8.mp4', 9: 'win9.mp4'
+};
+// Every level has its own clip now. Leave this empty: if a clip ever fails to
+// load, showWinScene falls through to the hand-drawn canvas celebration.
+const WIN_STILLS = {};
 
 function showWinScene() {
   const vid = document.getElementById('winVideo');
