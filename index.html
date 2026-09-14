@@ -2811,13 +2811,13 @@ function updateArenaHazards() {
   for (let i = arenaRocks.length - 1; i >= 0; i--) {
     const r = arenaRocks[i];
     r.t++;
-    if (r.t === 70) {                       // lands after a clear warning
+    if (r.t === 92) {                       // lands after a clear warning
       if (!playSfx('rock')) sfxZombieHit();
       addShake(7);
       addDust(r.x * CELL_SIZE + CELL_SIZE / 2, r.y * CELL_SIZE + CELL_SIZE, 1);
       if (player.x === r.x && player.y === r.y) hurtLeahInArena();
     }
-    if (r.t > 100) arenaRocks.splice(i, 1);
+    if (r.t > 122) arenaRocks.splice(i, 1);
   }
 
   // --- floor vents ---
@@ -2825,7 +2825,7 @@ function updateArenaHazards() {
     if (v.state === 0 && now > v.nextAt) { v.state = 1; v.t = 0; }
     else if (v.state === 1) {
       v.t++;
-      if (v.t > 45) {                       // spikes are out
+      if (v.t > 58) {                       // spikes are out
         v.state = 2; v.t = 0;
         if (player.x === v.x && player.y === v.y) hurtLeahInArena();
       }
@@ -2903,7 +2903,7 @@ function drawArenaHazards() {
       ctx.arc(px, py, CELL_SIZE * 0.30, 0, Math.PI * 2);
       ctx.stroke();
     } else if (v.state === 1) {
-      const k = v.t / 45;
+      const k = v.t / 58;
       ctx.fillStyle = `rgba(255, ${160 - k * 90}, 60, ${0.25 + k * 0.45})`;
       ctx.beginPath();
       ctx.arc(px, py, CELL_SIZE * (0.30 + k * 0.16), 0, Math.PI * 2);
@@ -2935,8 +2935,8 @@ function drawArenaHazards() {
   for (const r of arenaRocks) {
     const px = r.x * CELL_SIZE + CELL_SIZE / 2;
     const py = r.y * CELL_SIZE + CELL_SIZE / 2;
-    if (r.t < 70) {
-      const k = r.t / 70;
+    if (r.t < 92) {
+      const k = r.t / 92;
       ctx.fillStyle = `rgba(0,0,0,${0.18 + k * 0.35})`;
       ctx.beginPath();
       ctx.ellipse(px, py, CELL_SIZE * (0.16 + k * 0.24), CELL_SIZE * (0.07 + k * 0.10), 0, 0, Math.PI * 2);
@@ -2960,7 +2960,7 @@ function drawArenaHazards() {
         ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 1.5; ctx.stroke();
       }
     } else {
-      const k = (r.t - 70) / 30;
+      const k = (r.t - 92) / 30;
       ctx.fillStyle = `rgba(90,80,70,${1 - k})`;
       ctx.beginPath();
       ctx.arc(px, py, CELL_SIZE * (0.28 + k * 0.15), 0, Math.PI * 2);
@@ -3128,7 +3128,7 @@ function updateBoss() {
 
   if (Date.now() < boss.hurtUntil) return;   // staggered
   boss.moveTimer++;
-  const speed = 150 * (1 + mercy * 0.25);
+  const speed = 197 * (1 + mercy * 0.25);
   if (boss.moveTimer < speed) return;
   boss.moveTimer = 0;
 
@@ -3140,7 +3140,7 @@ function updateBoss() {
     if (ART.fxSlam) playFx('fxSlam', boss.x, boss.y, 2.2);
     else orbBurst(boss.x, boss.y, true);
     for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]) {
-      monShots.push({ x: boss.x, y: boss.y, vx: dx * 0.13, vy: dy * 0.13, life: 90 });
+      monShots.push({ x: boss.x, y: boss.y, vx: dx * 0.10, vy: dy * 0.10, life: 118 });
     }
     if (!playSfx('slam')) sfxZombieHit();
   }
@@ -3754,9 +3754,9 @@ let phoneAttack = null; // { fromX, fromY, toX, toY, frames, targetZombieId }
 // Level 1 has no monsters at all so a young player can learn to move and
 // answer questions first; they arrive in level 2 and ramp up in level 3.
 const ZOMBIE_COUNT_BY_LEVEL = { 1: 0, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6 };
-const ZOMBIE_SPEED_BY_LEVEL = { 1: 200, 2: 170, 3: 130, 4: 115, 5: 100, 6: 85 }; // frames per step (higher = slower)
+const ZOMBIE_SPEED_BY_LEVEL = { 1: 262, 2: 223, 3: 170, 4: 151, 5: 131, 6: 111 }; // frames per step (higher = slower)
 const ZOMBIE_COUNT = 3;
-const ZOMBIE_MOVE_INTERVAL = 130; // frames between zombie moves (very slow - easy mode)
+const ZOMBIE_MOVE_INTERVAL = 170; // frames between zombie moves
 const INVINCIBLE_FRAMES = 90; // ~1.5s at 60fps
 
 // ==================== MAZE GENERATION ====================
@@ -4008,7 +4008,7 @@ function updateZombies() {
         }
         if (clear) {
           z.shootReady = Date.now() + 4000;
-          monShots.push({ x: z.x, y: z.y, vx: dxs * 0.16, vy: dys * 0.16, life: tr.sight * 8 });
+          monShots.push({ x: z.x, y: z.y, vx: dxs * 0.12, vy: dys * 0.12, life: tr.sight * 11 });
         }
       }
     }
@@ -6796,7 +6796,7 @@ function pushTrail(x, y) {
 }
 
 let lastPlayerMoveTime = 0;
-const PLAYER_MOVE_COOLDOWN_MS = 130; // minimum time between moves (slower!)
+const PLAYER_MOVE_COOLDOWN_MS = 170; // minimum time between moves
 let lastAttackTime = 0;
 const ATTACK_COOLDOWN_MS = 500; // minimum time between attacks
 
