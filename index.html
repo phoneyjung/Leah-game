@@ -780,6 +780,8 @@
     <button id="muteBtn" onclick="toggleMute()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1.1em; cursor:pointer;" title="Mute/Unmute">🔊</button>
     <button id="bookBtn" onclick="openBook()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="Collection">📖</button>
     <button id="coopBtn" onclick="toggleCoop()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="2 players">👥</button>
+    <button id="keysBtn" onclick="openKeys()" style="display:none; background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="Keyboard controls">⌨️</button>
+    <button id="slotBtn" onclick="switchPlayer()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="Change player">👤</button>
     <button id="speakToggle" onclick="toggleSpeak()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="Read aloud">🔊</button>
     <button id="fullscreenBtn" onclick="toggleFullscreen()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="Fullscreen">⛶</button>
   </div>
@@ -936,6 +938,23 @@
     <p style="font-size: 1.2em; margin: 15px 0;" id="loseMessage"></p>
     <p style="color:#666;" id="loseSubMsg">Don't worry, Leah can try again! 💪</p>
     <button class="continue-btn" id="loseTryAgain" onclick="restartGame()">🔄 Try Again</button>
+  </div>
+</div>
+
+<!-- Player save slots -->
+<div class="modal" id="slotModal">
+  <div class="modal-content" style="max-width:560px;">
+    <h2 id="slotTitle">👤 ใครจะเล่น</h2>
+    <div id="slotBody" style="text-align:left;"></div>
+  </div>
+</div>
+
+<!-- Keyboard guide (PC only) -->
+<div class="modal" id="keysModal">
+  <div class="modal-content" style="max-width:640px;">
+    <h2 id="keysTitle">⌨️ ปุ่มกดบนคอมพิวเตอร์</h2>
+    <div id="keysBody" style="text-align:left;"></div>
+    <button class="continue-btn" id="keysClose" onclick="closeKeys()">ปิด</button>
   </div>
 </div>
 
@@ -3796,8 +3815,19 @@ function updateAndDrawDust() {
 }
 
 // === LEVEL PROGRESS (survives closing the tab) ===
-const SAVE_KEY = 'leahCaveProgress';
-const STARS_KEY = 'leahCaveStars';
+// One save per player. The keys carry the slot number, so slot 2 can never
+// write over slot 1. setSlot() is the only place these change.
+const SLOTS_KEY = 'leahCaveSlots';
+const LAST_SLOT_KEY = 'leahCaveLastSlot';
+let currentSlot = 1;
+let SAVE_KEY = 'leahCaveProgress_1';
+let STARS_KEY = 'leahCaveStars_1';
+function setSlot(n) {
+  currentSlot = n;
+  SAVE_KEY = 'leahCaveProgress_' + n;
+  STARS_KEY = 'leahCaveStars_' + n;
+  try { localStorage.setItem(LAST_SLOT_KEY, String(n)); } catch (e) {}
+}
 
 // Per-run scoring for the 3-star rating
 let runHits = 0;          // times a monster caught Leah this level
@@ -7316,7 +7346,7 @@ function selectLanguage(lang) {
   draw();
   
   document.getElementById('langModal').classList.remove('active');
-  document.getElementById('introModal').classList.add('active');
+  openSlotPicker(false);
 }
 
 function closeIntro() {
@@ -7329,6 +7359,7 @@ function closeIntro() {
     if (localStorage.getItem('leahCaveCoop') === '1') toggleCoop();
   } catch (e) {}
   setTimeout(tutorStart, 600);
+  maybeShowKeysHint();
   // Resume the furthest level reached, so closing the tab does not lose progress
   setLevel(loadProgress());
   applyLevelBackdrop();
@@ -8886,6 +8917,10 @@ function drawRainbowHeart() {
 
 // ==================== INPUT HANDLING ====================
 document.addEventListener('keydown', (e) => {
+  // While the player is typing a name, the keyboard belongs to the input box
+  const t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+
   // Spacebar or H for help
   if ((e.key === ' ' || e.key === 'h' || e.key === 'H') && (gameState === 'playing' || gameState === 'escape')) {
     useDaddyPhoneHelp();
@@ -9419,6 +9454,8 @@ function toggleCoop() {
     }
   }
   try { localStorage.setItem('leahCaveCoop', coopMode ? '1' : '0'); } catch (e) {}
+  const km = document.getElementById('keysModal');
+  if (km && km.classList.contains('active')) buildKeysPanel();
   showToast(coopMode
     ? (currentLang === 'th' ? '👥 โหมด 2 คน: พ่อโฟนใช้ปุ่มขวา' : '👥 2 players: Daddy uses the right pad')
     : (currentLang === 'th' ? '👤 กลับเป็นเล่นคนเดียว' : '👤 Back to single player'));
@@ -9675,6 +9712,315 @@ function gameLoop() {
 window.addEventListener('error', function(e) {
   console.error('Global error:', e.message, 'at', e.filename + ':' + e.lineno);
 });
+
+// ==================== SAVE SLOTS ====================
+// Three independent saves. Each slot owns its own progress and stars; nothing
+// is shared but the device settings (sound, language, co-op), which belong to
+// the device rather than to a player.
+const SLOT_COUNT = 3;
+const MAX_STARS = 27;   // 9 levels x 3 stars
+let slotPickerInGame = false;
+let slotView = { mode: 'list', n: 0 };
+
+function loadSlots() {
+  try { return JSON.parse(localStorage.getItem(SLOTS_KEY)) || {}; } catch (e) { return {}; }
+}
+function saveSlots(all) {
+  try { localStorage.setItem(SLOTS_KEY, JSON.stringify(all)); } catch (e) {}
+}
+// Read a slot without switching the live one
+function slotSummary(n) {
+  let lv = 1, st = {};
+  try { const raw = localStorage.getItem('leahCaveProgress_' + n); if (raw) lv = JSON.parse(raw).level || 1; } catch (e) {}
+  try { st = JSON.parse(localStorage.getItem('leahCaveStars_' + n)) || {}; } catch (e) {}
+  let total = 0;
+  for (const k in st) total += (st[k] || 0);
+  return { level: lv, stars: total };
+}
+function eraseSlot(n) {
+  try {
+    localStorage.removeItem('leahCaveProgress_' + n);
+    localStorage.removeItem('leahCaveStars_' + n);
+  } catch (e) {}
+  const all = loadSlots();
+  delete all[n];
+  saveSlots(all);
+}
+
+function slotText() {
+  const th = currentLang === 'th';
+  return {
+    title: th ? '👤 ใครจะเล่น' : '👤 Who is playing?',
+    empty: th ? 'ช่องว่าง — แตะเพื่อสร้าง' : 'Empty — tap to start',
+    level: th ? 'ด่าน ' : 'Level ',
+    nameAsk: th ? 'พิมพ์ชื่อผู้เล่น' : 'Type your name',
+    ok: th ? 'ตกลง' : 'OK',
+    cancel: th ? 'ยกเลิก' : 'Cancel',
+    delAsk: th ? 'ลบเซฟนี้ทิ้งเลยไหม' : 'Delete this save?',
+    delYes: th ? 'ลบเลย' : 'Delete',
+    play: th ? 'เล่น' : 'Play',
+    lastPlayed: th ? 'เล่นล่าสุด' : 'last played'
+  };
+}
+
+function buildSlotPicker() {
+  const t = slotText();
+  const all = loadSlots();
+  let last = 1;
+  try { last = parseInt(localStorage.getItem(LAST_SLOT_KEY), 10) || 1; } catch (e) {}
+  document.getElementById('slotTitle').textContent = t.title;
+  const body = document.getElementById('slotBody');
+  if (!body) return;
+
+  if (slotView.mode === 'name') {
+    body.innerHTML =
+      '<div style="text-align:center; padding:6px 0;">'
+      + '<div style="color:#c2185b; font-weight:bold; margin-bottom:10px;">' + t.nameAsk + '</div>'
+      + '<input id="slotNameInput" type="text" maxlength="12" autocomplete="off" spellcheck="false"'
+      + ' style="width:80%; font-size:1.3em; text-align:center; padding:10px; border:3px solid #ce93d8;'
+      + ' border-radius:12px; outline:none; text-transform:uppercase;">'
+      + '<div style="margin-top:14px; display:flex; gap:10px; justify-content:center;">'
+      + '<button class="continue-btn" onclick="confirmSlotName()">' + t.ok + '</button>'
+      + '<button class="continue-btn" style="background:#bbb;" onclick="slotBackToList()">' + t.cancel + '</button>'
+      + '</div></div>';
+    const inp = document.getElementById('slotNameInput');
+    if (inp) {
+      inp.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); confirmSlotName(); }
+        if (e.key === 'Escape') { e.preventDefault(); slotBackToList(); }
+      });
+      setTimeout(() => { try { inp.focus(); } catch (e) {} }, 60);
+    }
+    return;
+  }
+
+  if (slotView.mode === 'del') {
+    const nm = (all[slotView.n] && all[slotView.n].name) || ('#' + slotView.n);
+    body.innerHTML =
+      '<div style="text-align:center; padding:10px 0;">'
+      + '<div style="color:#c2185b; font-weight:bold; font-size:1.1em; margin-bottom:6px;">' + t.delAsk + '</div>'
+      + '<div style="font-size:1.4em; margin-bottom:14px;">' + nm + '</div>'
+      + '<div style="display:flex; gap:10px; justify-content:center;">'
+      + '<button class="continue-btn" style="background:linear-gradient(135deg,#ef5350,#c62828);" onclick="confirmSlotDelete()">' + t.delYes + '</button>'
+      + '<button class="continue-btn" style="background:#bbb;" onclick="slotBackToList()">' + t.cancel + '</button>'
+      + '</div></div>';
+    return;
+  }
+
+  let html = '';
+  for (let n = 1; n <= SLOT_COUNT; n++) {
+    const info = all[n];
+    const hot = (n === last) && info;
+    if (info) {
+      const s = slotSummary(n);
+      html +=
+        '<div style="display:flex; align-items:center; gap:10px; margin:8px 0; padding:10px;'
+        + ' border:3px solid ' + (hot ? '#c2185b' : '#e1bee7') + '; border-radius:14px;'
+        + ' background:' + (hot ? '#fce4ec' : '#faf5fd') + ';">'
+        + '<div style="flex:1; cursor:pointer;" onclick="chooseSlot(' + n + ')">'
+        + '<div style="font-weight:bold; font-size:1.15em; color:#4a148c;">' + info.name + '</div>'
+        + '<div style="font-size:0.88em; color:#777;">' + t.level + s.level + ' · ⭐ ' + s.stars + '/' + MAX_STARS + '</div>'
+        + '</div>'
+        + '<button class="continue-btn" style="padding:8px 16px; font-size:0.9em;" onclick="chooseSlot(' + n + ')">▶ ' + t.play + '</button>'
+        + '<button title="delete" style="background:none; border:2px solid #ef9a9a; color:#c62828;'
+        + ' border-radius:10px; width:38px; height:38px; font-size:1em; cursor:pointer;"'
+        + ' onclick="askSlotDelete(' + n + ')">🗑</button>'
+        + '</div>';
+    } else {
+      html +=
+        '<div onclick="askSlotName(' + n + ')" style="display:flex; align-items:center; gap:10px;'
+        + ' margin:8px 0; padding:14px; border:3px dashed #ce93d8; border-radius:14px;'
+        + ' background:#fafafa; color:#9575cd; cursor:pointer;">'
+        + '<div style="font-size:1.4em;">➕</div><div style="flex:1;">' + t.empty + '</div></div>';
+    }
+  }
+  body.innerHTML = html;
+}
+
+function openSlotPicker(inGame) {
+  slotPickerInGame = !!inGame;
+  slotView = { mode: 'list', n: 0 };
+  buildSlotPicker();
+  const m = document.getElementById('slotModal');
+  if (m) m.classList.add('active');
+}
+function slotBackToList() {
+  slotView = { mode: 'list', n: 0 };
+  buildSlotPicker();
+}
+function askSlotName(n) {
+  sfxClick();
+  slotView = { mode: 'name', n: n };
+  buildSlotPicker();
+}
+function confirmSlotName() {
+  const inp = document.getElementById('slotNameInput');
+  let name = inp ? inp.value.trim() : '';
+  if (!name) name = (currentLang === 'th' ? 'ผู้เล่น ' : 'PLAYER ') + slotView.n;
+  if (name.length > 12) name = name.slice(0, 12);
+  const all = loadSlots();
+  all[slotView.n] = { name: name, created: Date.now() };
+  saveSlots(all);
+  chooseSlot(slotView.n);
+}
+function askSlotDelete(n) {
+  sfxClick();
+  slotView = { mode: 'del', n: n };
+  buildSlotPicker();
+}
+function confirmSlotDelete() {
+  eraseSlot(slotView.n);
+  slotBackToList();
+}
+
+function chooseSlot(n) {
+  sfxClick();
+  setSlot(n);
+  const m = document.getElementById('slotModal');
+  if (m) m.classList.remove('active');
+  if (slotPickerInGame) {
+    // Mirror exactly what closeIntro() does, or the maze keeps the old level's
+    // size while COLS/ROWS move on, and draw() starts reading past its edge.
+    setLevel(loadProgress());
+    applyLevelBackdrop();
+    gameState = 'playing';
+    restartGame();
+    updateHelpButton();
+    startBGM();
+    const all = loadSlots();
+    const nm = (all[n] && all[n].name) || '';
+    showToast((currentLang === 'th' ? '👤 กำลังเล่นเป็น ' : '👤 Now playing as ') + nm);
+  } else {
+    document.getElementById('introModal').classList.add('active');
+  }
+}
+
+function switchPlayer() {
+  if (gameState === 'won' || gameState === 'lost') return;
+  openSlotPicker(true);
+}
+
+// ==================== KEYBOARD GUIDE (PC only) ====================
+// The on-screen d-pads already explain themselves on a touch screen.
+// On a real keyboard nothing tells you which keys do what, so this panel does.
+const KEYS_TH = {
+  title: '⌨️ ปุ่มกดบนคอมพิวเตอร์',
+  close: 'ปิด',
+  p1: '👧 ผู้เล่น 1 — ลีอา',
+  p2: '🧙 ผู้เล่น 2 — พ่อโฟน',
+  coopOn: 'โหมด 2 คนเปิดอยู่',
+  coopOff: 'กดปุ่ม 👥 ด้านบนก่อน จึงจะใช้ปุ่มฝั่งนี้ได้',
+  rows1: [
+    ['↑ ↓ ← →  หรือ  W A S D', 'เดิน'],
+    ['F  หรือ  X', 'ฟันดาบ'],
+    ['E  หรือ  Q', 'ยิงลูกแก้วเวทมนตร์'],
+    ['R', 'วาร์ป'],
+    ['Space  หรือ  H', 'เรียกพ่อโฟนมาช่วย']
+  ],
+  rows2: [
+    ['I  K  J  L', 'เดิน (บน ล่าง ซ้าย ขวา)'],
+    ['U', 'ไม้เท้าสะกดมอนเตอร์ / ยิงลูกแก้ว']
+  ],
+  tip: 'กดปุ่ม ? เพื่อเปิดหน้านี้อีกครั้งได้ทุกเมื่อ'
+};
+const KEYS_EN = {
+  title: '⌨️ Keyboard controls',
+  close: 'Close',
+  p1: '👧 Player 1 — Leah',
+  p2: '🧙 Player 2 — Daddy Phon',
+  coopOn: '2-player mode is ON',
+  coopOff: 'Press the 👥 button above first to use these keys',
+  rows1: [
+    ['↑ ↓ ← →  or  W A S D', 'Move'],
+    ['F  or  X', 'Swing sword'],
+    ['E  or  Q', 'Fire magic orb'],
+    ['R', 'Warp'],
+    ['Space  or  H', 'Call Daddy for help']
+  ],
+  rows2: [
+    ['I  K  J  L', 'Move (up, down, left, right)'],
+    ['U', 'Wand freeze / fire orb']
+  ],
+  tip: 'Press ? any time to open this again'
+};
+
+function keysHasKeyboard() {
+  try {
+    const touchOnly = ('ontouchstart' in window || navigator.maxTouchPoints > 0)
+      && !window.matchMedia('(any-pointer: fine)').matches;
+    return !touchOnly;
+  } catch (e) { return true; }
+}
+
+function buildKeysPanel() {
+  const t = (currentLang === 'th') ? KEYS_TH : KEYS_EN;
+  const on = (typeof coopMode !== 'undefined') && coopMode;
+  const row = (k, d) => '<div style="display:flex; gap:10px; align-items:center; margin:5px 0;">'
+    + '<span style="flex:0 0 46%; background:#f3e5f5; border:2px solid #ce93d8; border-radius:8px;'
+    + ' padding:4px 8px; font-weight:bold; color:#4a148c; font-size:0.92em; text-align:center;">'
+    + k + '</span><span style="flex:1; color:#444; font-size:0.95em;">' + d + '</span></div>';
+  const block = (head, rows, note, dim) =>
+    '<div style="margin-bottom:14px; ' + (dim ? 'opacity:0.55;' : '') + '">'
+    + '<div style="font-weight:bold; color:#c2185b; margin-bottom:6px;">' + head + '</div>'
+    + (note ? '<div style="font-size:0.85em; color:#777; margin-bottom:6px;">' + note + '</div>' : '')
+    + rows.map(r => row(r[0], r[1])).join('') + '</div>';
+
+  const body = document.getElementById('keysBody');
+  if (body) {
+    body.innerHTML =
+      block(t.p1, t.rows1, '', false)
+      + block(t.p2, t.rows2, on ? '✅ ' + t.coopOn : '⚠️ ' + t.coopOff, !on)
+      + '<div style="font-size:0.82em; color:#888; text-align:center;">' + t.tip + '</div>';
+  }
+  const ttl = document.getElementById('keysTitle');
+  if (ttl) ttl.textContent = t.title;
+  const cls = document.getElementById('keysClose');
+  if (cls) cls.textContent = t.close;
+}
+
+function openKeys() {
+  buildKeysPanel();
+  const m = document.getElementById('keysModal');
+  if (m) m.classList.add('active');
+}
+
+function closeKeys() {
+  const m = document.getElementById('keysModal');
+  if (m) m.classList.remove('active');
+}
+
+// Show the ⌨️ button wherever a keyboard is plausible. Hide it only on a
+// device that is clearly touch-only, since a missing button defeats the point.
+(function initKeysGuide() {
+  if (!keysHasKeyboard()) return;
+  const b = document.getElementById('keysBtn');
+  if (b) b.style.display = '';
+  document.addEventListener('keydown', (e) => {
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    if (e.key === '?' || (e.key === '/' && e.shiftKey)) {
+      const m = document.getElementById('keysModal');
+      if (m && m.classList.contains('active')) closeKeys(); else openKeys();
+      e.preventDefault();
+    } else if (e.key === 'Escape') {
+      closeKeys();
+    }
+  });
+})();
+
+// A toast, not a popup: never freeze the player in front of a live maze.
+function maybeShowKeysHint() {
+  if (!keysHasKeyboard()) return;
+  let seen = false;
+  try { seen = localStorage.getItem('leahCaveKeysSeen') === '1'; } catch (e) {}
+  if (seen) return;
+  try { localStorage.setItem('leahCaveKeysSeen', '1'); } catch (e) {}
+  setTimeout(() => {
+    showToast(currentLang === 'th'
+      ? '⌨️ กดปุ่ม ? หรือ ⌨️ ด้านบน เพื่อดูปุ่มกดทั้งหมด'
+      : '⌨️ Press ? or the ⌨️ button above to see all the keys');
+  }, 900);
+}
 
 // Game loop runs from start - shows placeholder until language is chosen
 gameLoop();
