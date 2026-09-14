@@ -943,30 +943,36 @@
 // ==================== GAME CONFIG ====================
 // Level system - sizes are: Level 1 (50%), Level 2 (75%), Level 3 (100%)
 let currentLevel = 1; // 1, 2, or 3
-const MAX_LEVEL = 6;
+const MAX_LEVEL = 9;
 const LEVEL_SIZES = {
   1: { cols: 17, rows: 13, collectible: 'gem' },      // small cave, gems
   2: { cols: 26, rows: 19, collectible: 'cloth' },    // medium cave, cloth
   3: { cols: 35, rows: 25, collectible: 'star' },     // big cave, stars  + BOSS
   4: { cols: 41, rows: 29, collectible: 'moon' },     // deeper, moonstones
   5: { cols: 47, rows: 33, collectible: 'sun' },      // deepest, sunstones
-  6: { cols: 51, rows: 37, collectible: 'sun' }       // the final descent  + BOSS
+  6: { cols: 51, rows: 37, collectible: 'sun' },      // the deep descent  + BOSS
+  7: { cols: 53, rows: 39, collectible: 'gem' },      // the lost halls
+  8: { cols: 55, rows: 41, collectible: 'star' },
+  9: { cols: 57, rows: 43, collectible: 'sun' }       // the sealed vault  + BOSS
 };
 
 // A boss guards the way out every third level
-const BOSS_LEVELS = [3, 6];
+const BOSS_LEVELS = [3, 6, 9];
 function isBossLevel(lv) { return BOSS_LEVELS.includes(lv); }
 
 // The monsters change species every three levels, and pick up new tricks
 // as the caves get deeper.
-function monsterTier(lv) { return lv <= 3 ? 1 : 2; }
+function monsterTier(lv) { return lv <= 3 ? 1 : lv <= 6 ? 2 : 3; }
 const MONSTER_TRAITS = {
   1: { sight: 4,  dash: false, shoot: false },   // wanders, barely notices you
   2: { sight: 6,  dash: false, shoot: false },   // gives chase
   3: { sight: 8,  dash: true,  shoot: false },   // sudden bursts of speed
   4: { sight: 7,  dash: false, shoot: false },   // new species, steady hunter
   5: { sight: 9,  dash: true,  shoot: false },   // dashes again
-  6: { sight: 11, dash: true,  shoot: true }     // and spits crystal shards
+  6: { sight: 11, dash: true,  shoot: true },    // and spits crystal shards
+  7: { sight: 9,  dash: false, shoot: true },    // new species, keeps its distance
+  8: { sight: 11, dash: true,  shoot: true },
+  9: { sight: 13, dash: true,  shoot: true }     // relentless
 };
 function traits() { return MONSTER_TRAITS[currentLevel] || MONSTER_TRAITS[1]; }
 let COLS = LEVEL_SIZES[1].cols;
@@ -997,6 +1003,11 @@ const ART_FILES = {
   exitArt: 'art-exit.png',
   leahHurt: 'art-leah-hurt.png',
   monTier2: 'art-mon2-hurt.png',   // deep-cave species, startled
+  monTier3: 'art-mon3-hurt.png',   // vault species, startled
+  hazards3:  'art-hazards3.png',   // vault versions of rock / spikes / crystal
+  boss3Sleep: 'art-boss3-sleep.png',
+  fxSpikes:  'art-fx-spikes.jpg',
+  fxRock:    'art-fx-rockfall.jpg',
   warpArt: 'art-warp.png',        // the warp stone pickup
   bossFloor: 'art-boss-floor.jpg',
   bossWall:  'art-boss-wall.jpg',
@@ -1021,6 +1032,8 @@ const WALK_FILES = {
   leahSwing: 'art-leah-swing.png',
   bossWalk:  'art-boss-walk.png',
   monTier2Walk: 'art-mon2-walk.png',   // deep-cave species
+  monTier3Walk: 'art-mon3-walk.png',   // vault species
+  boss3Walk:    'art-boss3-walk.png',
   boss2Walk:    'art-boss2-walk.png',  // optional: level 6 boss
   momWalk:   'art-mom-walk.png'
 };
@@ -1480,7 +1493,7 @@ function sfxToast() {
 // ==================== RECORDED SOUNDTRACK ====================
 // Two looping mp3s. If either file is missing the game falls straight back
 // to the synthesised score, so nothing breaks and the cave is never silent.
-const TRACKS = { calm: 'bgm-calm.mp3', escape: 'bgm-escape.mp3', boss: 'bgm-boss.mp3', boss2: 'bgm-boss2.mp3' };
+const TRACKS = { calm: 'bgm-calm.mp3', escape: 'bgm-escape.mp3', boss: 'bgm-boss.mp3', boss2: 'bgm-boss2.mp3', deep: 'bgm-deep.mp3', victory: 'bgm-victory.mp3' };
 const music = {};
 let musicTrack = null;       // 'calm' | 'escape' | null
 const MUSIC_VOL = 0.28;   // background score sits well under the effects
@@ -1535,8 +1548,9 @@ function applyMusicMute() {
 }
 
 function startBGM() {
-  // Recorded track wins; it also works before the audio context exists
-  if (playTrack('calm')) { stopSynthBGM(); return; }
+  // The last three levels get their own, more solemn score
+  const key = currentLevel >= 7 ? 'deep' : 'calm';
+  if (playTrack(key) || playTrack('calm')) { stopSynthBGM(); return; }
   if (!audioCtx || bgmRunning) return;
   bgmRunning = true;
   
@@ -2721,7 +2735,7 @@ questions.push(...HARD_EN);
 questionsTH.push(...HARD_TH);
 
 // Which difficulties each level may draw from
-const LEVEL_DIFFICULTY = { 1: [1], 2: [1], 3: [1, 2], 4: [2, 3], 5: [3], 6: [3] };
+const LEVEL_DIFFICULTY = { 1: [1], 2: [1], 3: [1, 2], 4: [2, 3], 5: [3], 6: [3], 7: [3], 8: [3], 9: [3] };
 
 let activeQuestions = [];
 let maze = [];
@@ -2771,7 +2785,13 @@ function setupArenaHazards() {
   // Vents sit in a ring around the middle so there is always a safe lane
   arenaVents = [];
   const cx = Math.floor(ARENA_W / 2), cy = Math.floor(ARENA_H / 2);
-  for (const [ox, oy] of [[-5,-3],[5,-3],[-5,3],[5,3],[-7,0],[7,0]]) {
+  // Offsets chosen to clear the pillars, which sit at +-6,+-3 and 0,-4
+  const baseSpots = [[-3,-3],[3,-3],[-3,3],[3,3],[-7,0],[7,0]];
+  // The guardian can only be beaten with these, so his arena gets more
+  const ventSpots = currentLevel === 9
+    ? baseSpots.concat([[-3,0],[3,0],[0,-2],[0,2]])
+    : baseSpots;
+  for (const [ox, oy] of ventSpots) {
     const x = cx + ox, y = cy + oy;
     if (maze[y] && maze[y][x] === 0) {
       arenaVents.push({ x, y, nextAt: Date.now() + 2500 + Math.random() * 2500, state: 0, t: 0 });
@@ -2816,6 +2836,10 @@ function updateArenaHazards() {
       addShake(7);
       addDust(r.x * CELL_SIZE + CELL_SIZE / 2, r.y * CELL_SIZE + CELL_SIZE, 1);
       if (player.x === r.x && player.y === r.y) hurtLeahInArena();
+      if (boss && !bossDefeated &&
+          Math.max(Math.abs(boss.x - r.x), Math.abs(boss.y - r.y)) <= 1) {
+        bossTrapHit('rock');
+      }
     }
     if (r.t > 122) arenaRocks.splice(i, 1);
   }
@@ -2828,6 +2852,11 @@ function updateArenaHazards() {
       if (v.t > 58) {                       // spikes are out
         v.state = 2; v.t = 0;
         if (player.x === v.x && player.y === v.y) hurtLeahInArena();
+        // He is four cells across, so standing anywhere near it catches him
+        if (boss && !bossDefeated &&
+            Math.max(Math.abs(boss.x - v.x), Math.abs(boss.y - v.y)) <= 1) {
+          bossTrapHit('spike');
+        }
       }
     } else if (v.state === 2) {
       v.t++;
@@ -2871,9 +2900,10 @@ function drawArenaHazards() {
     g.addColorStop(1, 'rgba(80, 220, 200, 0)');
     ctx.fillStyle = g;
     ctx.fillRect(px - CELL_SIZE * 0.8, py - CELL_SIZE * 0.8, CELL_SIZE * 1.6, CELL_SIZE * 1.6);
-    if (ART.hazards) {
-      const fw = ART.hazards.width / 3, sz = CELL_SIZE * 0.85;
-      ctx.drawImage(ART.hazards, 2 * fw, 0, fw, ART.hazards.height,
+    const hz = (monsterTier(currentLevel) === 3 && ART.hazards3) ? ART.hazards3 : ART.hazards;
+    if (hz) {
+      const fw = hz.width / 3, sz = CELL_SIZE * 0.85;
+      ctx.drawImage(hz, 2 * fw, 0, fw, hz.height,
                     px - sz / 2, py - sz / 2 + Math.sin(t * 1.6 + c.t) * 2, sz, sz);
       continue;
     }
@@ -2893,26 +2923,64 @@ function drawArenaHazards() {
   }
 
   // vents: a glowing warning ring, then spikes
+  const hinting = Date.now() < hintVentUntil;
   for (const v of arenaVents) {
     const px = v.x * CELL_SIZE + CELL_SIZE / 2;
     const py = v.y * CELL_SIZE + CELL_SIZE / 2;
+    if (hinting) {
+      // Flash the vents so it is obvious where to lead him
+      const beat = 0.45 + Math.sin(Date.now() / 120) * 0.35;
+      ctx.strokeStyle = `rgba(255, 230, 120, ${beat})`;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(px, py, CELL_SIZE * 0.55, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = `rgba(255, 230, 120, ${beat * 0.5})`;
+      ctx.font = `${Math.round(CELL_SIZE * 0.5)}px Arial`;
+      ctx.textAlign = 'center';
+      ctx.fillText('!', px, py - CELL_SIZE * 0.6);
+      ctx.textAlign = 'start';
+    }
     if (v.state === 0) {
       ctx.strokeStyle = 'rgba(255,140,90,0.30)';
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(px, py, CELL_SIZE * 0.30, 0, Math.PI * 2);
       ctx.stroke();
+    } else if (v.state === 1 && ART.fxSpikes) {
+      const k = v.t / 58;
+      const fw = ART.fxSpikes.width / 5;
+      const f = k < 0.6 ? 0 : 1;
+      const sz = CELL_SIZE * (1.3 + k * 0.7);
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.5 + k * 0.5;
+      ctx.drawImage(ART.fxSpikes, f * fw, 0, fw, ART.fxSpikes.height,
+                    px - sz / 2, py - sz * 0.55, sz, sz);
+      ctx.restore();
     } else if (v.state === 1) {
       const k = v.t / 58;
       ctx.fillStyle = `rgba(255, ${160 - k * 90}, 60, ${0.25 + k * 0.45})`;
       ctx.beginPath();
       ctx.arc(px, py, CELL_SIZE * (0.30 + k * 0.16), 0, Math.PI * 2);
       ctx.fill();
-    } else if (ART.hazards) {
+    } else if (ART.fxSpikes || ART.hazards) {
       const k = Math.min(1, v.t / 8);
-      const fw = ART.hazards.width / 3, sz = CELL_SIZE * 1.1 * (0.5 + k * 0.5);
-      ctx.drawImage(ART.hazards, 1 * fw, 0, fw, ART.hazards.height,
-                    px - sz / 2, py - sz * 0.78, sz, sz);
+      if (ART.fxSpikes) {
+        // Animated eruption: frames 2-4 cover the spikes being out
+        const fw = ART.fxSpikes.width / 5;
+        const f = Math.min(4, 2 + Math.floor(v.t / 12));
+        const sz = CELL_SIZE * 2.0;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.drawImage(ART.fxSpikes, f * fw, 0, fw, ART.fxSpikes.height,
+                      px - sz / 2, py - sz * 0.62, sz, sz);
+        ctx.restore();
+      } else {
+        const hz2 = (monsterTier(currentLevel) === 3 && ART.hazards3) ? ART.hazards3 : ART.hazards;
+        const fw = hz2.width / 3, sz = CELL_SIZE * 1.1 * (0.5 + k * 0.5);
+        ctx.drawImage(hz2, 1 * fw, 0, fw, hz2.height, px - sz / 2, py - sz * 0.78, sz, sz);
+      }
     } else {
       const k = Math.min(1, v.t / 8);
       ctx.fillStyle = 'rgba(255, 235, 200, 0.95)';
@@ -2959,6 +3027,16 @@ function drawArenaHazards() {
         ctx.fill();
         ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 1.5; ctx.stroke();
       }
+    } else if (ART.fxRock) {
+      const k = (r.t - 92) / 30;
+      const fw = ART.fxRock.width / 5;
+      const f = Math.min(4, 2 + Math.floor(k * 3));
+      const sz = CELL_SIZE * 2.0;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.drawImage(ART.fxRock, f * fw, 0, fw, ART.fxRock.height,
+                    px - sz / 2, py - sz * 0.5, sz, sz);
+      ctx.restore();
     } else {
       const k = (r.t - 92) / 30;
       ctx.fillStyle = `rgba(90,80,70,${1 - k})`;
@@ -3020,11 +3098,13 @@ function enterBossArena() {
     if (daddyCompanion) { daddyCompanion.displayX = player.x; daddyCompanion.displayY = player.y + 0; }
 
     const bx = Math.floor(ARENA_W / 2), by = Math.floor(ARENA_H / 2) - 1;
-    const hp = currentLevel === 3 ? 5 : 8;
+    const armored = currentLevel === 9;
+    const hp = currentLevel === 3 ? 5 : currentLevel === 6 ? 8 : 4;
     boss = {
       x: bx, y: by, displayX: bx, displayY: by,
       hp, maxHp: hp, moveTimer: 0, hurtUntil: 0, face: -1, phase: 0,
-      tier: monsterTier(currentLevel), slamReady: Date.now() + 3000
+      tier: monsterTier(currentLevel), slamReady: Date.now() + 3000,
+      armored, bounces: 0
     };
     bossDefeated = false;
     setupArenaHazards();
@@ -3068,9 +3148,10 @@ function drawSleepingBoss() {
   if (inBossFight || !bossGate || !bossDefeated) return;
   const px = bossGate.x * CELL_SIZE + CELL_SIZE / 2;
   const py = bossGate.y * CELL_SIZE + CELL_SIZE / 2;
-  if (ART.bossSleep) {
-    const h = CELL_SIZE * 1.5, w = ART.bossSleep.width * h / ART.bossSleep.height;
-    ctx.drawImage(ART.bossSleep, px - w / 2, py + CELL_SIZE * 0.5 - h, w, h);
+  const sleepArt = (monsterTier(currentLevel) === 3 && ART.boss3Sleep) ? ART.boss3Sleep : ART.bossSleep;
+  if (sleepArt) {
+    const h = CELL_SIZE * 1.5, w = sleepArt.width * h / sleepArt.height;
+    ctx.drawImage(sleepArt, px - w / 2, py + CELL_SIZE * 0.5 - h, w, h);
   } else {
     const sheet = (monsterTier(currentLevel) > 1 && ART.boss2Walk) ? ART.boss2Walk : ART.bossWalk;
     const size = CELL_SIZE * 2.2;
@@ -3157,8 +3238,61 @@ function updateBoss() {
   }
 }
 
+// Weapons bounce off the guardian. The arena hazards are the only thing that
+// can dent him, so Leah has to lure him onto a vent or under a falling rock.
+function bossArmorBounce() {
+  boss.bounces++;
+  addShake(5);
+  orbBurst(boss.x, boss.y, false);
+  if (!playSfx('rock')) sfxZombieHit();
+  const th = currentLang === 'th';
+  if (boss.bounces === 1 || boss.bounces % 4 === 0) {
+    showToast(th ? '🛡️ เกราะแข็งเกินไป! อาวุธไม่เข้า' : '🛡️ Too tough! Weapons bounce off');
+  }
+  // After a few failed swings, Daddy points at what actually works
+  if (boss.bounces === 5) {
+    showToast(th
+      ? '🧙 พ่อโฟน: "ล่อมันไปเหยียบหนาม หรือให้หินตกใส่สิลูก!"'
+      : '🧙 Daddy: "Lure him onto the spikes, or under a falling rock!"');
+    speak(th ? 'ล่อมันไปเหยียบหนาม หรือให้หินตกใส่' : 'Lure him onto the spikes or under a falling rock');
+  }
+  // Light up the nearest vent so the idea lands
+  hintVentUntil = Date.now() + 3000;
+}
+
+let hintVentUntil = 0;
+
+// Damage that comes from the arena itself - this is what actually works
+function bossTrapHit(kind) {
+  if (!boss || bossDefeated) return false;
+  if (Date.now() < (boss.trapImmuneUntil || 0)) return false;
+  boss.trapImmuneUntil = Date.now() + 900;
+  boss.hp--;
+  boss.hurtUntil = Date.now() + 1100;
+  addShake(16);
+  addHitStop(110);
+  orbBurst(boss.x, boss.y, true);
+  if (!playSfx(kind === 'rock' ? 'rock' : 'slam')) sfxZombieHit();
+  const th = currentLang === 'th';
+  if (boss.hp <= 0) {
+    bossDefeated = true;
+    addShake(22); addHitStop(180);
+    for (let i = 0; i < 6; i++) {
+      setTimeout(() => orbBurst(boss.x + (Math.random() - 0.5) * 1.8,
+                                boss.y + (Math.random() - 0.5) * 1.8, true), i * 110);
+    }
+    sfxWin();
+    showToast(th ? '🏆 ใช้ถ้ำเล่นงานมันสำเร็จ!' : '🏆 You used the cave against him!');
+    if (inBossFight) setTimeout(leaveBossArena, 1500);
+  } else {
+    showToast(th ? `💥 เข้าแล้ว! เหลืออีก ${boss.hp} ครั้ง` : `💥 It worked! ${boss.hp} to go`);
+  }
+  return true;
+}
+
 function hitBoss() {
   if (!boss || bossDefeated) return;
+  if (boss.armored) { bossArmorBounce(); return; }
   boss.hp--;
   boss.hurtUntil = Date.now() + 800;
   addShake(12);
@@ -3205,10 +3339,12 @@ function drawBoss() {
 
   ctx.save();
   if (hurt) ctx.globalAlpha = 0.55 + Math.sin(Date.now() / 50) * 0.35;
-  const sheet = (boss.tier > 1 && ART.boss2Walk) ? ART.boss2Walk : (ART.bossWalk || ART.monWalk);
+  const sheet = (boss.tier === 3 && ART.boss3Walk) ? ART.boss3Walk
+              : (boss.tier === 2 && ART.boss2Walk) ? ART.boss2Walk
+              : (ART.bossWalk || ART.monWalk);
   if (sheet) {
     drawWalkFrame(ctx, sheet, Math.floor(boss.phase * 2) % 4, px, py + size * 0.42 + bob, size, boss.face);
-    if (boss.tier > 1 && !ART.boss2Walk) {
+    if (boss.tier === 2 && !ART.boss2Walk) {
       ctx.globalCompositeOperation = 'source-atop';
       ctx.fillStyle = 'rgba(110, 90, 230, 0.38)';
       ctx.fillRect(px - size, py - size, size * 2, size * 2);
@@ -3234,6 +3370,17 @@ function drawBoss() {
   ctx.lineTo(px + cw, chy);
   ctx.closePath();
   ctx.fill();
+  }
+
+  if (boss.armored) {
+    // A shield badge makes it plain that swords will not do it
+    const sx = px + size * 0.34, sy = py - size * 0.58 + bob;
+    ctx.save();
+    ctx.globalAlpha = 0.55 + Math.sin(Date.now() / 260) * 0.3;
+    ctx.font = `${Math.round(CELL_SIZE * 0.55)}px Arial`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('🛡️', sx, sy);
+    ctx.restore();
   }
 
   // Health bar above his head
@@ -3620,7 +3767,7 @@ const STARS_KEY = 'leahCaveStars';
 // Per-run scoring for the 3-star rating
 let runHits = 0;          // times a monster caught Leah this level
 let runStartTime = 0;     // when the level began
-const PAR_SECONDS = { 1: 120, 2: 210, 3: 300, 4: 360, 5: 420, 6: 480 }; // beat this for the speed star
+const PAR_SECONDS = { 1: 120, 2: 210, 3: 300, 4: 360, 5: 420, 6: 480, 7: 520, 8: 560, 9: 620 }; // beat this for the speed star
 
 function loadStars() {
   try { return JSON.parse(localStorage.getItem(STARS_KEY)) || {}; } catch (e) { return {}; }
@@ -3753,8 +3900,8 @@ let leahKnockback = null; // { dx, dy, frames }
 let phoneAttack = null; // { fromX, fromY, toX, toY, frames, targetZombieId }
 // Level 1 has no monsters at all so a young player can learn to move and
 // answer questions first; they arrive in level 2 and ramp up in level 3.
-const ZOMBIE_COUNT_BY_LEVEL = { 1: 0, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6 };
-const ZOMBIE_SPEED_BY_LEVEL = { 1: 262, 2: 223, 3: 170, 4: 151, 5: 131, 6: 111 }; // frames per step (higher = slower)
+const ZOMBIE_COUNT_BY_LEVEL = { 1: 0, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 6, 8: 7, 9: 8 };
+const ZOMBIE_SPEED_BY_LEVEL = { 1: 262, 2: 223, 3: 170, 4: 151, 5: 131, 6: 111, 7: 105, 8: 98, 9: 92 }; // frames per step (higher = slower)
 const ZOMBIE_COUNT = 3;
 const ZOMBIE_MOVE_INTERVAL = 170; // frames between zombie moves
 const INVINCIBLE_FRAMES = 90; // ~1.5s at 60fps
@@ -5392,7 +5539,8 @@ function drawZombie(z) {
     ctx.ellipse(px, py + CELL_SIZE * 0.44, CELL_SIZE * 0.24, CELL_SIZE * 0.075, 0, 0, Math.PI * 2);
     ctx.fill();
     // Cyan crystal glow on its back
-    const aura = monsterTier(currentLevel) > 1 ? '150, 120, 255' : '90, 230, 255';
+    const aura = monsterTier(currentLevel) === 3 ? '255, 140, 40'
+               : monsterTier(currentLevel) === 2 ? '150, 120, 255' : '90, 230, 255';
     const gl = ctx.createRadialGradient(px, py, 0, px, py, CELL_SIZE * 0.7);
     gl.addColorStop(0, `rgba(${aura}, 0.32)`);
     gl.addColorStop(1, `rgba(${aura}, 0)`);
@@ -5403,7 +5551,15 @@ function drawZombie(z) {
     ctx.rotate(waddle);
     ctx.translate(-px, -(py + CELL_SIZE * 0.46));
     const tier = monsterTier(currentLevel);
-    if (tier > 1) {
+    if (tier === 3) {
+      if (hurt && (ART.monTier3 || ART.hurt)) {
+        const rx = Math.sign(px - (player.displayX * CELL_SIZE + CELL_SIZE / 2)) * 1.6;
+        drawSprite(ctx, ART.monTier3 || ART.hurt, px + rx, py + CELL_SIZE * 0.46, CELL_SIZE * 1.12);
+      } else {
+        drawWalkFrame(ctx, ART.monTier3Walk || ART.monTier2Walk || ART.monWalk, frame, px,
+                      py + CELL_SIZE * 0.46 + bob, CELL_SIZE * 1.12, z.gait.face);
+      }
+    } else if (tier > 1) {
       // Deep-cave species: same silhouette, colder colouring
       ctx.save();
       if (hurt) {
@@ -7165,7 +7321,8 @@ function nextLevel() {
 function applyLevelBackdrop() {
   document.body.style.backgroundImage =
     "linear-gradient(rgba(10,0,25,0.72), rgba(10,0,25,0.82)), url('" +
-    ({ 1:'art-cave.jpg', 2:'art-cave2.jpg', 3:'art-cave3.jpg', 4:'art-cave4.jpg', 5:'art-cave3.jpg', 6:'art-cave4.jpg' }[currentLevel] || 'art-cave.jpg') + "')";
+    ({ 1:'art-cave.jpg', 2:'art-cave2.jpg', 3:'art-cave3.jpg', 4:'art-cave4.jpg', 5:'art-cave3.jpg',
+       6:'art-cave4.jpg', 7:'art-cave5.jpg', 8:'art-cave5.jpg', 9:'art-cave5.jpg' }[currentLevel] || 'art-cave.jpg') + "')";
 }
 
 function showEscapeMessage() {
@@ -7218,6 +7375,8 @@ function winGame() {
   stopBGM();
   sfxWin();
   
+  if (!playTrack('victory')) stopBGM();
+
   // Work out the 3-star rating for this run and keep the best
   const st = runStars();
   const earned = st.filter(Boolean).length;
@@ -7264,7 +7423,7 @@ function loseGame(message) {
 // refuses to play it, the hand-drawn animation runs instead.
 const WIN_CLIPS = { 1: 'win1.mp4', 2: 'win2.mp4', 3: 'win3.mp4' };
 // No clip for the deeper levels yet, so a painted finale scene stands in
-const WIN_STILLS = { 4: 'art-win4.jpg', 5: 'art-win5.jpg', 6: 'art-win6.jpg' };
+const WIN_STILLS = { 4: 'art-win4.jpg', 5: 'art-win5.jpg', 6: 'art-win6.jpg', 7: 'art-win7.jpg', 8: 'art-win8.jpg', 9: 'art-win9.jpg' };
 
 function showWinScene() {
   const vid = document.getElementById('winVideo');
@@ -7808,9 +7967,9 @@ function drawRainbowHeart() {
   }
 
   function drawReward(cx, cy, scale, alpha) {
-    const art = currentLevel === 4 ? ART.reward4
-              : currentLevel === 5 ? ART.reward5
-              : currentLevel === 6 ? ART.reward6 : null;
+    const art = (currentLevel === 4 || currentLevel === 7) ? ART.reward4
+              : (currentLevel === 5 || currentLevel === 8) ? ART.reward5
+              : (currentLevel === 6 || currentLevel === 9) ? ART.reward6 : null;
     if (art) {
       wctx.save(); wctx.globalAlpha = alpha;
       const h = 124 * scale, w = art.width * h / art.height;
@@ -7819,9 +7978,9 @@ function drawRainbowHeart() {
       wctx.drawImage(art, cx - w / 2, cy - h / 2, w, h);
       wctx.restore(); return;
     }
-    if (currentLevel === 4) { drawGreatStar(cx, cy, scale, alpha); return; }
-    if (currentLevel === 5) { drawTrophy(cx, cy, scale, alpha); return; }
-    if (currentLevel === 6) { drawCrown(cx, cy, scale, alpha); return; }
+    if (currentLevel === 4 || currentLevel === 7) { drawGreatStar(cx, cy, scale, alpha); return; }
+    if (currentLevel === 5 || currentLevel === 8) { drawTrophy(cx, cy, scale, alpha); return; }
+    if (currentLevel === 6 || currentLevel === 9) { drawCrown(cx, cy, scale, alpha); return; }
     if (currentLevel === 3 && ART.plush) {
       wctx.save(); wctx.globalAlpha = alpha;
       const h = 116 * scale, w = ART.plush.width * h / ART.plush.height;
@@ -8636,9 +8795,9 @@ function drawRainbowHeart() {
     const lang = currentLang || 'en';
     
     // Reward names based on level
-    const rewardNameTH = { 1:'หัวใจสายรุ้ง', 2:'ผ้าทอสวยงาม', 3:'ตุ๊กตาน้องแมว', 4:'ดาวประกายพรึก', 5:'ถ้วยรางวัลคริสตัล', 6:'มงกุฎเจ้าถ้ำ' }[currentLevel];
-    const rewardNameEN = { 1:'Rainbow Heart', 2:'Beautiful Cloth', 3:'Plush Friend', 4:'Great Star', 5:'Crystal Trophy', 6:"Cave King's Crown" }[currentLevel];
-    const rewardEmoji  = { 1:'🌈', 2:'🧵', 3:'🎀', 4:'🌟', 5:'🏆', 6:'👑' }[currentLevel];
+    const rewardNameTH = { 1:'หัวใจสายรุ้ง', 2:'ผ้าทอสวยงาม', 3:'ตุ๊กตาน้องแมว', 4:'ดาวประกายพรึก', 5:'ถ้วยรางวัลคริสตัล', 6:'มงกุฎเจ้าถ้ำ', 7:'ดาวประกายพรึก', 8:'ถ้วยรางวัลคริสตัล', 9:'มงกุฎผู้พิทักษ์' }[currentLevel];
+    const rewardNameEN = { 1:'Rainbow Heart', 2:'Beautiful Cloth', 3:'Plush Friend', 4:'Great Star', 5:'Crystal Trophy', 6:"Cave King's Crown", 7:'Great Star', 8:'Crystal Trophy', 9:"Guardian's Crown" }[currentLevel];
+    const rewardEmoji  = { 1:'🌈', 2:'🧵', 3:'🎀', 4:'🌟', 5:'🏆', 6:'👑', 7:'🌟', 8:'🏆', 9:'👑' }[currentLevel];
     
     if (phase > 1.2 && messageStage === 0) {
       msgEl.textContent = lang === 'th' 
@@ -9295,7 +9454,10 @@ const BOOK_ROWS = [
   { lv: 3, icon: '⭐', th: 'ดาวทอง',        en: 'Golden Stars',  rth: 'ตุ๊กตาน้องแมว', ren: 'Plush Friend' },
   { lv: 4, icon: '🌙', th: 'หินจันทรา',     en: 'Moonstones',    rth: 'ดาวประกายพรึก', ren: 'Great Star' },
   { lv: 5, icon: '☀️', th: 'หินสุริยะ',      en: 'Sunstones',     rth: 'ถ้วยรางวัลคริสตัล', ren: 'Crystal Trophy' },
-  { lv: 6, icon: '👑', th: 'หินสุริยะ (ลึกสุด)', en: 'Sunstones (deepest)', rth: 'มงกุฎเจ้าถ้ำ', ren: "Cave King's Crown" }
+  { lv: 6, icon: '👑', th: 'หินสุริยะ (ลึกสุด)', en: 'Sunstones (deepest)', rth: 'มงกุฎเจ้าถ้ำ', ren: "Cave King's Crown" },
+  { lv: 7, icon: '💎', th: 'อัญมณีโถงร้าง',  en: 'Lost Hall Gems',  rth: 'ดาวประกายพรึก', ren: 'Great Star' },
+  { lv: 8, icon: '⭐', th: 'ดาวโถงร้าง',     en: 'Lost Hall Stars', rth: 'ถ้วยรางวัลคริสตัล', ren: 'Crystal Trophy' },
+  { lv: 9, icon: '🛡️', th: 'หินห้องผนึก',   en: 'Vault Stones',    rth: 'มงกุฎผู้พิทักษ์', ren: "Guardian's Crown" }
 ];
 function openBook() {
   sfxClick();
