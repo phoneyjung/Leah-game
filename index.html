@@ -450,6 +450,28 @@
     body { overflow: hidden; }
   }
 
+  /* An iPad Pro is 1024px wide in portrait, so the rule above never caught it.
+     Widen it for touch devices only - a narrow desktop window is not a tablet. */
+  @media (orientation: portrait) and (max-width: 1400px) {
+    body.touch #rotateGate { display: flex; }
+    body.touch { overflow: hidden; }
+  }
+  /* Safari cannot force a rotation, so the player is always given a way past */
+  body.portrait-ok #rotateGate { display: none !important; }
+  body.portrait-ok { overflow: auto; }
+  .rotate-btn {
+    margin-top: 6px; padding: 12px 22px; border-radius: 999px; border: 2px solid #ffd8ea;
+    background: rgba(255,255,255,0.08); color: #ffd8ea; font-size: 1em; font-weight: bold;
+    cursor: pointer;
+  }
+  .rotate-note { font-size: 0.78em; opacity: 0.6; max-width: 320px; line-height: 1.5; }
+
+  /* A tablet is wide enough to miss the phone breakpoints, so the on-screen
+     pads never appeared there. This class is what the 🎮 button toggles. */
+  body.padson .mobile-controls { display: block; }
+  #padsBtn { display: none; }
+  body.touch #padsBtn { display: inline-block; }
+
   /* PORTRAIT MOBILE - bigger canvas */
   @media (max-width: 700px) and (orientation: portrait) {
     body { padding: 4px; }
@@ -792,6 +814,7 @@
     <button id="bookBtn" onclick="openBook()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="Collection">📖</button>
     <button id="coopBtn" onclick="toggleCoop()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="2 players">👥</button>
     <button id="keysBtn" onclick="openKeys()" style="display:none; background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="Keyboard controls">⌨️</button>
+    <button id="padsBtn" onclick="togglePads()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="Show or hide the on-screen pad">🎮</button>
     <button id="swapPadBtn" onclick="toggleSwapPads()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="Swap the two pads">⇄</button>
     <button id="musicBtn" onclick="openMusic()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="Music volume">🎵</button>
     <button id="slotBtn" onclick="switchPlayer()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="Change player">👤</button>
@@ -825,6 +848,8 @@
     <div class="rotate-phone">📱</div>
     <div class="rotate-title">หมุนจอเป็นแนวนอน</div>
     <div class="rotate-sub">Rotate your device to play</div>
+    <div class="rotate-note" id="rotateNote"></div>
+    <button class="rotate-btn" id="rotateSkip" onclick="playPortraitAnyway()">เล่นแนวตั้งเลย</button>
   </div>
 
   <div class="mobile-controls" id="mobileControls">
@@ -1955,6 +1980,7 @@ function t(key) { return I18N[currentLang][key] || I18N.en[key] || key; }
 
 // Apply language to all UI strings
 function applyLanguage() {
+  if (typeof refreshRotateGate === 'function') refreshRotateGate();
   const logoSrc = (currentLang === 'th') ? 'art-logo-th.png' : 'art-logo-en.png';
   const lg = document.getElementById('introLogo');
   if (lg) lg.src = logoSrc;
@@ -9326,7 +9352,7 @@ let fullscreenPrompted = false;
 canvas.addEventListener('click', function tryFullscreen() {
   // Only prompt in landscape on mobile, and only once
   const isLandscape = window.innerHeight < window.innerWidth && window.innerHeight < 600;
-  const isMobile = /Mobi|Android/i.test(navigator.userAgent);
+  const isMobile = /Mobi|Android/i.test(navigator.userAgent) || isTouchDevice();
   if (!fullscreenPrompted && isMobile && isLandscape && !document.fullscreenElement && !document.webkitFullscreenElement) {
     fullscreenPrompted = true;
     toggleFullscreen();
@@ -9989,6 +10015,104 @@ function gameLoop() {
 window.addEventListener('error', function(e) {
   console.error('Global error:', e.message, 'at', e.filename + ':' + e.lineno);
 });
+
+// ==================== TABLET SUPPORT ====================
+// A phone gets the on-screen pads from a max-width media query. An iPad is far
+// too wide for that rule, so on a tablet the pads simply never appeared and
+// there was no way to move. This turns them on by hand.
+function isTouchDevice() {
+  try { return ('ontouchstart' in window) || navigator.maxTouchPoints > 0; }
+  catch (e) { return false; }
+}
+
+// The pads already show by CSS on a narrow screen; the button is only about
+// the screens where they do not.
+function padsShownByCss() {
+  try {
+    return window.matchMedia('(max-width: 700px)').matches
+        || (window.matchMedia('(orientation: landscape)').matches && window.innerHeight <= 600);
+  } catch (e) { return false; }
+}
+
+function togglePads() {
+  sfxClick();
+  const on = !document.body.classList.contains('padson');
+  document.body.classList.toggle('padson', on);
+  try { localStorage.setItem('leahCavePads', on ? '1' : '0'); } catch (e) {}
+  updatePadsBtn();
+  measureControlInsets(true);
+  const th = currentLang === 'th';
+  showToast(on ? (th ? '🎮 เปิดปุ่มบังคับบนจอ' : '🎮 On-screen pad on')
+                : (th ? '🎮 ปิดปุ่มบังคับบนจอ' : '🎮 On-screen pad off'));
+}
+
+function updatePadsBtn() {
+  const b = document.getElementById('padsBtn');
+  if (!b) return;
+  const on = document.body.classList.contains('padson') || padsShownByCss();
+  b.style.opacity = on ? '1' : '0.45';
+  b.style.borderColor = on ? '#c2185b' : '#999';
+}
+
+(function initTabletControls() {
+  if (!isTouchDevice()) return;
+  document.body.classList.add('touch');
+  let saved = null;
+  try { saved = localStorage.getItem('leahCavePads'); } catch (e) {}
+  // Default to on for a touch screen the media queries do not cover, since
+  // there is no keyboard to fall back on.
+  const want = (saved === null) ? !padsShownByCss() : (saved === '1');
+  document.body.classList.toggle('padson', want);
+  updatePadsBtn();
+  setTimeout(() => measureControlInsets(true), 300);
+})();
+
+// Safari on iPadOS has no orientation lock at all, and if the system rotation
+// lock is on the screen will not turn however the tablet is held. Rather than
+// leave the player stuck behind the rotate screen, let them through.
+function playPortraitAnyway() {
+  sfxClick();
+  document.body.classList.add('portrait-ok');
+  try { localStorage.setItem('leahCavePortraitOK', '1'); } catch (e) {}
+  if (!document.body.classList.contains('padson') && isTouchDevice()) {
+    document.body.classList.add('padson');
+    try { localStorage.setItem('leahCavePads', '1'); } catch (e) {}
+    updatePadsBtn();
+  }
+  resizeCanvas();
+  measureControlInsets(true);
+}
+
+// This screen can appear before a language has been chosen, so it says
+// everything in both languages rather than guessing.
+function refreshRotateGate() {
+  const note = document.getElementById('rotateNote');
+  if (note) {
+    note.innerHTML =
+      'ถ้าหมุนเครื่องแล้วจอไม่หมุนตาม แปลว่าล็อกหมุนจออยู่ '
+      + 'ปิดได้ที่ศูนย์ควบคุม ปัดลงจากมุมขวาบน แล้วแตะรูปแม่กุญแจ'
+      + '<br><span style="opacity:0.75">If the screen will not turn, rotation lock is on. '
+      + 'Open Control Centre and tap the lock icon.</span>';
+  }
+  const btn = document.getElementById('rotateSkip');
+  if (btn) btn.textContent = 'เล่นแนวตั้งเลย / Play in portrait';
+}
+
+(function initPortraitEscape() {
+  try {
+    if (localStorage.getItem('leahCavePortraitOK') === '1') document.body.classList.add('portrait-ok');
+  } catch (e) {}
+  refreshRotateGate();
+  window.addEventListener('orientationchange', () => setTimeout(() => {
+    // Once the tablet is landscape again the gate is irrelevant, so forget the override
+    if (window.innerWidth > window.innerHeight) {
+      document.body.classList.remove('portrait-ok');
+      try { localStorage.removeItem('leahCavePortraitOK'); } catch (e) {}
+    }
+    resizeCanvas();
+    measureControlInsets(true);
+  }, 150));
+})();
 
 // ==================== PAD SIDE SWAP (co-op) ====================
 // Two players share one screen, so whoever sits on the left needs the left pad.
