@@ -781,6 +781,7 @@
     <button id="bookBtn" onclick="openBook()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="Collection">📖</button>
     <button id="coopBtn" onclick="toggleCoop()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="2 players">👥</button>
     <button id="keysBtn" onclick="openKeys()" style="display:none; background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="Keyboard controls">⌨️</button>
+    <button id="musicBtn" onclick="openMusic()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="Music volume">🎵</button>
     <button id="slotBtn" onclick="switchPlayer()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="Change player">👤</button>
     <button id="speakToggle" onclick="toggleSpeak()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="Read aloud">🔊</button>
     <button id="fullscreenBtn" onclick="toggleFullscreen()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="Fullscreen">⛶</button>
@@ -938,6 +939,23 @@
     <p style="font-size: 1.2em; margin: 15px 0;" id="loseMessage"></p>
     <p style="color:#666;" id="loseSubMsg">Don't worry, Leah can try again! 💪</p>
     <button class="continue-btn" id="loseTryAgain" onclick="restartGame()">🔄 Try Again</button>
+  </div>
+</div>
+
+<!-- Music volume -->
+<div class="modal" id="musicModal">
+  <div class="modal-content" style="max-width:460px;">
+    <h2 id="musicTitle">🎵 เสียงเพลง</h2>
+    <div id="musicPct" style="font-size:2em; font-weight:bold; color:#4a148c; margin:4px 0;">100%</div>
+    <div style="display:flex; align-items:center; gap:10px; margin:10px 4px 16px;">
+      <span style="font-size:1.3em;">🔇</span>
+      <input id="musicSlider" type="range" min="0" max="100" step="5" value="100"
+             style="flex:1; height:30px; accent-color:#c2185b; cursor:pointer;">
+      <span style="font-size:1.3em;">🔊</span>
+    </div>
+    <div id="musicQuick" style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-bottom:14px;"></div>
+    <div id="musicNote" style="font-size:0.82em; color:#888; margin-bottom:10px;"></div>
+    <button class="continue-btn" id="musicClose" onclick="closeMusic()">ปิด</button>
   </div>
 </div>
 
@@ -1164,7 +1182,7 @@ function initAudio() {
     masterGain.connect(audioCtx.destination);
     
     bgmGain = audioCtx.createGain();
-    bgmGain.gain.value = 0.18;
+    bgmGain.gain.value = SYNTH_BGM_BASE * musicScale;
     bgmGain.connect(masterGain);
     
     sfxGain = audioCtx.createGain();
@@ -1516,7 +1534,15 @@ function sfxToast() {
 const TRACKS = { calm: 'bgm-calm.mp3', escape: 'bgm-escape.mp3', boss: 'bgm-boss.mp3', boss2: 'bgm-boss2.mp3', deep: 'bgm-deep.mp3', victory: 'bgm-victory.mp3' };
 const music = {};
 let musicTrack = null;       // 'calm' | 'escape' | null
-const MUSIC_VOL = 0.28;   // background score sits well under the effects
+const MUSIC_BASE = 0.28;   // background score sits well under the effects
+const SYNTH_BGM_BASE = 0.18;  // the fallback synth score uses its own gain node
+// Player-set music level, 0 = off .. 1 = full. Saved per device.
+let musicScale = 1;
+try {
+  const v = parseFloat(localStorage.getItem('leahCaveMusicVol'));
+  if (!isNaN(v) && v >= 0 && v <= 1) musicScale = v;
+} catch (e) {}
+function musicVolNow() { return MUSIC_BASE * musicScale; }
 
 for (const key in TRACKS) {
   const el = new Audio();
@@ -1552,7 +1578,7 @@ function playTrack(key) {
   el.volume = 0;
   const p = el.play();
   if (p && p.catch) p.catch(() => {});
-  musicFade(el, audioMuted ? 0 : MUSIC_VOL, 900);
+  musicFade(el, audioMuted ? 0 : musicVolNow(), 900);
   return true;
 }
 
@@ -1563,7 +1589,7 @@ function stopAllTracks() {
 
 function applyMusicMute() {
   for (const k in music) {
-    if (music[k]) music[k].volume = (audioMuted || k !== musicTrack) ? 0 : MUSIC_VOL;
+    if (music[k]) music[k].volume = (audioMuted || k !== musicTrack) ? 0 : musicVolNow();
   }
 }
 
@@ -9712,6 +9738,73 @@ function gameLoop() {
 window.addEventListener('error', function(e) {
   console.error('Global error:', e.message, 'at', e.filename + ':' + e.lineno);
 });
+
+// ==================== MUSIC VOLUME ====================
+// Only the score moves. Sound effects and the spoken questions keep their own
+// level, so turning the music down never makes the game harder to follow.
+function setMusicScale(v) {
+  musicScale = Math.max(0, Math.min(1, v));
+  try { localStorage.setItem('leahCaveMusicVol', String(musicScale)); } catch (e) {}
+  if (bgmGain) bgmGain.gain.value = SYNTH_BGM_BASE * musicScale;
+  applyMusicMute();          // pushes the new level onto the track playing now
+  updateMusicBtn();
+  renderMusicPanel();
+}
+
+function updateMusicBtn() {
+  const b = document.getElementById('musicBtn');
+  if (!b) return;
+  b.style.opacity = musicScale === 0 ? '0.4' : '1';
+  b.style.borderColor = musicScale === 0 ? '#999' : '#c2185b';
+}
+
+function renderMusicPanel() {
+  const th = currentLang === 'th';
+  const pct = Math.round(musicScale * 100);
+  const el = document.getElementById('musicPct');
+  if (el) el.textContent = musicScale === 0 ? (th ? 'ปิดเพลง' : 'Music off') : pct + '%';
+  const sl = document.getElementById('musicSlider');
+  if (sl && String(sl.value) !== String(pct)) sl.value = pct;
+  const ttl = document.getElementById('musicTitle');
+  if (ttl) ttl.textContent = th ? '🎵 เสียงเพลง' : '🎵 Music volume';
+  const cls = document.getElementById('musicClose');
+  if (cls) cls.textContent = th ? 'ปิด' : 'Close';
+  const note = document.getElementById('musicNote');
+  if (note) note.textContent = th
+    ? 'ปรับเฉพาะเพลงประกอบ เสียงเอฟเฟกต์กับเสียงอ่านคำถามไม่เปลี่ยน'
+    : 'Music only — sound effects and the spoken questions stay as they are';
+  const q = document.getElementById('musicQuick');
+  if (q) {
+    const steps = th
+      ? [['ปิด', 0], ['เบา', 0.3], ['กลาง', 0.6], ['ดัง', 1]]
+      : [['Off', 0], ['Low', 0.3], ['Mid', 0.6], ['Full', 1]];
+    q.innerHTML = steps.map(s => {
+      const on = Math.abs(musicScale - s[1]) < 0.03;
+      return '<button onclick="setMusicScale(' + s[1] + ')" style="padding:8px 16px; border-radius:999px;'
+        + ' font-weight:bold; cursor:pointer; border:2px solid #c2185b;'
+        + ' background:' + (on ? '#c2185b' : '#fff') + '; color:' + (on ? '#fff' : '#c2185b') + ';">'
+        + s[0] + '</button>';
+    }).join('');
+  }
+}
+
+function openMusic() {
+  sfxClick();
+  renderMusicPanel();
+  const m = document.getElementById('musicModal');
+  if (m) m.classList.add('active');
+}
+function closeMusic() {
+  sfxClick();
+  const m = document.getElementById('musicModal');
+  if (m) m.classList.remove('active');
+}
+
+(function initMusicSlider() {
+  const sl = document.getElementById('musicSlider');
+  if (sl) sl.addEventListener('input', () => setMusicScale(parseInt(sl.value, 10) / 100));
+  updateMusicBtn();
+})();
 
 // ==================== SAVE SLOTS ====================
 // Three independent saves. Each slot owns its own progress and stars; nothing
