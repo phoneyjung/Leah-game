@@ -1335,7 +1335,10 @@ const SFX_FILES = {
   bolt:    'sfx-bolt.mp3',
   warp:    'sfx-warp.mp3'
 };
-const SFX_VOL = { collect: 0.55, correct: 0.6, wrong: 0.5, magic: 0.5, hit: 0.55, win: 0.7, bolt: 0.5, warp: 0.6, slam: 0.6, rock: 0.5, crystal: 0.55, step: 0.22, slash: 0.6 };
+// Levels re-balanced after every recorded effect was normalised to the same
+// peak: the big moments (boss slam, crystal shattering) were sitting quieter
+// than ordinary hits, which read as anticlimactic.
+const SFX_VOL = { collect: 0.55, correct: 0.6, wrong: 0.5, magic: 0.5, hit: 0.55, win: 0.7, bolt: 0.65, warp: 0.6, slam: 0.8, rock: 0.5, crystal: 0.8, step: 0.22, slash: 0.6 };
 const sfxPool = {};
 const SFX_VOICES = 3;
 
@@ -1356,18 +1359,52 @@ for (const key in SFX_FILES) {
 }
 
 // Returns true when a recorded sound played, so the caller can skip the synth
-function playSfx(key) {
+function playSfx(key, rate) {
   if (audioMuted) return true;      // muted, but still treat it as handled
   const voices = sfxPool[key];
   if (!voices) return false;
   const el = voices.find(v => v.paused || v.ended) || voices[0];
   try {
     el.currentTime = 0;
+    el.playbackRate = rate || 1;
     el.volume = SFX_VOL[key] ?? 0.6;
     const pr = el.play();
     if (pr && pr.catch) pr.catch(() => {});
     return true;
   } catch (e) { return false; }
+}
+
+// A falling rock is a heavy thing. The recorded sample is short and thin, so a
+// low thud is layered underneath and the pitch is nudged each time, otherwise
+// three rocks landing together turn into one flat click.
+function sfxRockImpact(delayMs) {
+  const go = () => {
+    const had = playSfx('rock', 0.88 + Math.random() * 0.24);
+    if (!audioCtx) return;
+    const t = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(92, t);
+    osc.frequency.exponentialRampToValueAtTime(34, t + 0.26);
+    g.gain.setValueAtTime(had ? 0.08 : 0.42, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.32);
+    osc.connect(g); g.connect(sfxGain);
+    osc.start(t); osc.stop(t + 0.34);
+    if (!had) {
+      playNoise(0.14, 0.40, 900);                              // stone cracking
+      setTimeout(() => playNoise(0.32, 0.16, 300), 45);        // rubble settling
+    }
+  };
+  if (delayMs > 0) setTimeout(go, delayMs); else go();
+}
+
+// Heard while the shadow is still growing: the ceiling groaning and grit
+// trickling down, so the hit is never a surprise.
+function sfxRockWarn() {
+  if (audioMuted || !audioCtx) return;
+  playNoise(0.55, 0.05, 200);
+  setTimeout(() => playNoise(0.30, 0.04, 2000), 240);
 }
 
 function sfxStep() {
@@ -2840,7 +2877,7 @@ function arenaFloorFree(x, y) {
 }
 
 function setupArenaHazards() {
-  arenaRocks = []; rockTimer = 0;
+  arenaRocks = []; rockBits = []; rockTimer = 0;
   // Vents sit in a ring around the middle so there is always a safe lane
   arenaVents = [];
   const cx = Math.floor(ARENA_W / 2), cy = Math.floor(ARENA_H / 2);
@@ -2863,6 +2900,123 @@ function setupArenaHazards() {
   }
 }
 
+// ==================== ROCK DEBRIS ====================
+// Chips that fly off when a boulder lands, plus the grit that trickles from the
+// ceiling beforehand. Purely cosmetic: nothing here can hurt or block anyone.
+let rockBits = [];
+
+// A lumpy outline, so no two boulders are the same circle
+function rockShape() {
+  const n = 7 + Math.floor(Math.random() * 3);
+  const pts = [];
+  for (let i = 0; i < n; i++) pts.push(0.72 + Math.random() * 0.34);
+  return pts;
+}
+
+function drawRockShape(shape, sz) {
+  const pts = shape && shape.length ? shape : [1, 1, 1, 1, 1, 1, 1];
+  const rad = sz / 2;
+  ctx.beginPath();
+  for (let i = 0; i < pts.length; i++) {
+    const a = (i / pts.length) * Math.PI * 2;
+    const x = Math.cos(a) * rad * pts[i];
+    const y = Math.sin(a) * rad * pts[i];
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  const g = ctx.createLinearGradient(-rad, -rad, rad, rad);
+  g.addColorStop(0, '#7a6d61');
+  g.addColorStop(0.55, '#584e45');
+  g.addColorStop(1, '#3a332c');
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+  ctx.lineWidth = Math.max(1, sz * 0.045);
+  ctx.stroke();
+}
+
+function spawnRockBurst(wx, wy, scale) {
+  const chips = 7 + Math.floor(Math.random() * 4);
+  for (let i = 0; i < chips; i++) {
+    const a = Math.PI + Math.random() * Math.PI;          // outwards and up
+    const sp = (1.3 + Math.random() * 2.3) * (scale || 1);
+    rockBits.push({
+      x: wx, y: wy,
+      vx: Math.cos(a) * sp,
+      vy: Math.sin(a) * sp * 0.85 - 0.7,
+      r: CELL_SIZE * (0.045 + Math.random() * 0.075) * (scale || 1),
+      spin: (Math.random() - 0.5) * 0.4,
+      rot: Math.random() * Math.PI,
+      life: 1, fade: 0.026 + Math.random() * 0.02,
+      grit: false
+    });
+  }
+  for (let i = 0; i < 6; i++) {
+    rockBits.push({
+      x: wx + (Math.random() - 0.5) * CELL_SIZE * 0.6, y: wy,
+      vx: (Math.random() - 0.5) * 2.2,
+      vy: -0.5 - Math.random() * 0.8,
+      r: CELL_SIZE * (0.08 + Math.random() * 0.1),
+      spin: 0, rot: 0,
+      life: 1, fade: 0.035 + Math.random() * 0.02,
+      grit: true
+    });
+  }
+  if (rockBits.length > 160) rockBits.splice(0, rockBits.length - 160);
+}
+
+function spawnRockGrit(wx, wy) {
+  for (let i = 0; i < 2; i++) {
+    rockBits.push({
+      x: wx + (Math.random() - 0.5) * CELL_SIZE * 0.35, y: wy,
+      vx: (Math.random() - 0.5) * 0.35,
+      vy: 0.6 + Math.random() * 0.5,
+      r: CELL_SIZE * (0.022 + Math.random() * 0.03),
+      spin: (Math.random() - 0.5) * 0.3,
+      rot: Math.random() * 3,
+      life: 1, fade: 0.014,
+      grit: false
+    });
+  }
+}
+
+function updateAndDrawRockBits() {
+  for (let i = rockBits.length - 1; i >= 0; i--) {
+    const b = rockBits[i];
+    b.x += b.vx;
+    b.y += b.vy;
+    if (b.grit) {
+      b.vy -= 0.012;                 // dust drifts upward as it thins out
+      b.vx *= 0.96;
+      b.r += 0.35;
+    } else {
+      b.vy += 0.24;                  // chips fall under gravity
+      b.vx *= 0.99;
+      b.rot += b.spin;
+    }
+    b.life -= b.fade;
+    if (b.life <= 0) { rockBits.splice(i, 1); continue; }
+
+    if (b.grit) {
+      ctx.fillStyle = `rgba(150,134,112,${Math.max(0, b.life * 0.30)})`;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, Math.min(1, b.life));
+      ctx.translate(b.x, b.y);
+      ctx.rotate(b.rot);
+      ctx.fillStyle = '#5c5249';
+      ctx.fillRect(-b.r, -b.r * 0.7, b.r * 2, b.r * 1.4);
+      ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(-b.r, -b.r * 0.7, b.r * 2, b.r * 1.4);
+      ctx.restore();
+    }
+  }
+}
+
 function hurtLeahInArena() {
   if (leahInvincible > 0) return;
   handleZombieCollision({ hitCount: 0, x: player.x, y: player.y });
@@ -2881,20 +3035,36 @@ function updateArenaHazards() {
   if (rockTimer > rockGap) {
     rockTimer = 0;
     const drops = phase === 2 ? 3 : 2;
+    let spawned = 0;
     for (let i = 0; i < drops; i++) {
       // aim near Leah but never exactly on her, so it is always dodgeable
       const x = Math.max(1, Math.min(ARENA_W - 2, player.x + Math.round((Math.random() - 0.5) * 5)));
       const y = Math.max(1, Math.min(ARENA_H - 2, player.y + Math.round((Math.random() - 0.5) * 5)));
-      if (maze[y] && maze[y][x] === 0) arenaRocks.push({ x, y, t: 0 });
+      if (maze[y] && maze[y][x] === 0) {
+        // Every boulder gets its own silhouette, spin and size, so a volley
+        // never looks like the same sprite stamped three times.
+        arenaRocks.push({
+          x, y, t: 0,
+          spin: (Math.random() < 0.5 ? -1 : 1) * (1.4 + Math.random() * 1.6),
+          scale: 0.82 + Math.random() * 0.36,
+          lean: Math.random() * Math.PI,
+          drift: (Math.random() - 0.5) * CELL_SIZE * 0.5,
+          shape: rockShape(),
+          gritAt: 0
+        });
+        spawned++;
+      }
     }
+    if (spawned > 0) sfxRockWarn();
   }
   for (let i = arenaRocks.length - 1; i >= 0; i--) {
     const r = arenaRocks[i];
     r.t++;
     if (r.t === 92) {                       // lands after a clear warning
-      if (!playSfx('rock')) sfxZombieHit();
-      addShake(7);
+      sfxRockImpact(i * 35);                // stagger, or a volley becomes one click
+      addShake(9);
       addDust(r.x * CELL_SIZE + CELL_SIZE / 2, r.y * CELL_SIZE + CELL_SIZE, 1);
+      spawnRockBurst(r.x * CELL_SIZE + CELL_SIZE / 2, r.y * CELL_SIZE + CELL_SIZE / 2, r.scale || 1);
       if (player.x === r.x && player.y === r.y) hurtLeahInArena();
       if (boss && !bossDefeated &&
           Math.max(Math.abs(boss.x - r.x), Math.abs(boss.y - r.y)) <= 1) {
@@ -3059,52 +3229,110 @@ function drawArenaHazards() {
     }
   }
 
-  // falling rocks: shadow grows, then the rock hits
+  // falling rocks: the ceiling cracks, then a boulder actually drops
   for (const r of arenaRocks) {
     const px = r.x * CELL_SIZE + CELL_SIZE / 2;
     const py = r.y * CELL_SIZE + CELL_SIZE / 2;
+    const scale = r.scale || 1;
     if (r.t < 92) {
       const k = r.t / 92;
-      ctx.fillStyle = `rgba(0,0,0,${0.18 + k * 0.35})`;
+
+      // shadow on the floor: small and faint far off, wide and dark up close
+      ctx.fillStyle = `rgba(0,0,0,${0.16 + k * k * 0.45})`;
       ctx.beginPath();
-      ctx.ellipse(px, py, CELL_SIZE * (0.16 + k * 0.24), CELL_SIZE * (0.07 + k * 0.10), 0, 0, Math.PI * 2);
+      ctx.ellipse(px, py, CELL_SIZE * (0.14 + k * k * 0.3) * scale,
+                  CELL_SIZE * (0.06 + k * k * 0.13) * scale, 0, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = `rgba(255,90,90,${0.35 + Math.sin(r.t / 4) * 0.3})`;
+
+      // danger ring, drawn as a cracking circle rather than a plain outline
+      ctx.save();
+      ctx.strokeStyle = `rgba(255,90,90,${0.3 + Math.sin(r.t / 4) * 0.28})`;
       ctx.lineWidth = 2;
+      ctx.setLineDash([6, 5]);
+      ctx.lineDashOffset = -r.t * 0.7;
       ctx.beginPath();
       ctx.arc(px, py, CELL_SIZE * 0.36, 0, Math.PI * 2);
       ctx.stroke();
-      // the rock itself dropping in
-      const fall = (1 - k) * CELL_SIZE * 7;
-      if (ART.hazards) {
-        const fw = ART.hazards.width / 3, sz = CELL_SIZE * 0.8;
-        ctx.drawImage(ART.hazards, 0, 0, fw, ART.hazards.height,
-                      px - sz / 2, py - fall - sz / 2, sz, sz);
-      } else {
-        ctx.fillStyle = '#5b5148';
-        ctx.beginPath();
-        ctx.arc(px, py - fall, CELL_SIZE * 0.28, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 1.5; ctx.stroke();
-      }
-    } else if (ART.fxRock) {
-      const k = (r.t - 92) / 30;
-      const fw = ART.fxRock.width / 5;
-      const f = Math.min(4, 2 + Math.floor(k * 3));
-      const sz = CELL_SIZE * 2.0;
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.drawImage(ART.fxRock, f * fw, 0, fw, ART.fxRock.height,
-                    px - sz / 2, py - sz * 0.5, sz, sz);
       ctx.restore();
+
+      // grit trickles from the ceiling while the boulder is still up there
+      if (r.t < 40 && r.t - (r.gritAt || 0) > 7) {
+        r.gritAt = r.t;
+        spawnRockGrit(px + (Math.random() - 0.5) * CELL_SIZE * 0.5, py - CELL_SIZE * 3.2);
+      }
+
+      // the boulder appears part way through and accelerates the whole drop
+      const ENTER = 38;
+      if (r.t >= ENTER) {
+        // reaches the floor one frame before the impact, so there is never a
+        // visible gap between the boulder and the ground when it lands
+        const f = Math.min(1, (r.t - ENTER) / (91 - ENTER));
+        const fall = (1 - f * f) * CELL_SIZE * 10;        // quadratic = gravity
+        const sz = CELL_SIZE * (0.52 + f * 0.40) * scale; // grows as it nears
+        const cx = px + r.drift * (1 - f);
+        const cy = py - fall;
+
+        // smear behind it once it is really moving
+        if (f > 0.35) {
+          ctx.save();
+          ctx.globalAlpha = 0.16 * f;
+          ctx.fillStyle = '#6b6058';
+          ctx.beginPath();
+          ctx.ellipse(cx, cy - sz * 0.75, sz * 0.32, sz * 0.9 * f, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate((r.lean || 0) + (r.spin || 1) * f * 1.8);
+        if (ART.hazards) {
+          const fw = ART.hazards.width / 3;
+          ctx.drawImage(ART.hazards, 0, 0, fw, ART.hazards.height, -sz / 2, -sz / 2, sz, sz);
+        } else {
+          drawRockShape(r.shape, sz);
+        }
+        ctx.restore();
+      }
     } else {
-      const k = (r.t - 92) / 30;
-      ctx.fillStyle = `rgba(90,80,70,${1 - k})`;
+      const k = (r.t - 92) / 30;               // 0 .. 1 over the aftermath
+
+      // scar left where it struck
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, 0.55 * (1 - k));
+      ctx.fillStyle = '#2a211a';
       ctx.beginPath();
-      ctx.arc(px, py, CELL_SIZE * (0.28 + k * 0.15), 0, Math.PI * 2);
+      ctx.ellipse(px, py, CELL_SIZE * 0.34 * scale, CELL_SIZE * 0.16 * scale, 0, 0, Math.PI * 2);
       ctx.fill();
+      ctx.restore();
+
+      // dust thrown outwards, low and wide like real debris
+      if (k < 1) {
+        for (let d = 0; d < 3; d++) {
+          const sp = 0.55 + d * 0.28;
+          const rad = CELL_SIZE * (0.25 + k * sp) * scale;
+          ctx.fillStyle = `rgba(148,132,110,${Math.max(0, (0.34 - d * 0.08) * (1 - k))})`;
+          ctx.beginPath();
+          ctx.ellipse(px, py - k * CELL_SIZE * 0.12, rad, rad * 0.5, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // the sprite sheet still fires, but small and brief: a puff of grit, not a flash
+      if (ART.fxRock && k < 0.45) {
+        const fw = ART.fxRock.width / 5;
+        const f = Math.min(4, Math.floor(k / 0.45 * 4));
+        const sz = CELL_SIZE * 1.25 * scale;
+        ctx.save();
+        ctx.globalAlpha = 0.5 * (1 - k / 0.45);
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.drawImage(ART.fxRock, f * fw, 0, fw, ART.fxRock.height,
+                      px - sz / 2, py - sz * 0.45, sz, sz);
+        ctx.restore();
+      }
     }
   }
+  updateAndDrawRockBits();
 }
 
 function buildArena() {
@@ -3196,7 +3424,7 @@ function leaveBossArena() {
     dadTrailIdx = 0;
     if (daddyCompanion) { daddyCompanion.displayX = player.x; daddyCompanion.displayY = player.y; }
     mazeSnapshot = null;
-    arenaRocks = []; arenaVents = []; arenaCrystals = [];
+    arenaRocks = []; rockBits = []; arenaVents = []; arenaCrystals = [];
     bossDefeated = true;
     startBGM();
     showToast(currentLang === 'th'
@@ -9736,7 +9964,7 @@ function restartGame() {
   warpAnim = null;
   inBossFight = false;
   mazeSnapshot = null;
-  arenaRocks = []; arenaVents = []; arenaCrystals = [];
+  arenaRocks = []; rockBits = []; arenaVents = []; arenaCrystals = [];
   updateWarpBtn();
   
   document.getElementById('timer').textContent = '--:--';
