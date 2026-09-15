@@ -338,6 +338,17 @@
     right: auto; left: 210px; bottom: 26px;
   }
 
+  /* Mirror both pads so whoever sits on the left gets the left pad.
+     .dpad2 also carries the .dpad class, hence the :not() guard. */
+  body.coop.padswap .dpad:not(.dpad2) { left: auto; right: 24px; bottom: 24px; }
+  body.coop.padswap .dpad2            { right: auto; left: 30px; bottom: 30px; }
+  body.coop.padswap .attack-btn       { left: auto; right: 210px; }
+  body.coop.padswap .warp-btn         { left: auto; right: 210px; }
+
+  /* The swap button only means anything with two players on screen */
+  #swapPadBtn { display: none; }
+  body.coop #swapPadBtn { display: inline-block; }
+
   /* Tutorial hint bubble */
   #tutorHint {
     display: none;
@@ -781,6 +792,7 @@
     <button id="bookBtn" onclick="openBook()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="Collection">📖</button>
     <button id="coopBtn" onclick="toggleCoop()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="2 players">👥</button>
     <button id="keysBtn" onclick="openKeys()" style="display:none; background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="Keyboard controls">⌨️</button>
+    <button id="swapPadBtn" onclick="toggleSwapPads()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="Swap the two pads">⇄</button>
     <button id="musicBtn" onclick="openMusic()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="Music volume">🎵</button>
     <button id="slotBtn" onclick="switchPlayer()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="Change player">👤</button>
     <button id="speakToggle" onclick="toggleSpeak()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="Read aloud">🔊</button>
@@ -1159,6 +1171,7 @@ resizeCanvas();
 // Resize on window resize / orientation change
 window.addEventListener('resize', () => {
   resizeCanvas();
+  if (typeof measureControlInsets === 'function') measureControlInsets(true);
 });
 window.addEventListener('orientationchange', () => {
   setTimeout(resizeCanvas, 100); // wait for orientation to settle
@@ -4792,19 +4805,27 @@ function updateCamera() {
   const effectiveViewH = VIEW_HEIGHT / cameraZoom;
   const mazeW = COLS * CELL_SIZE;
   const mazeH = ROWS * CELL_SIZE;
-  
+
+  // Strips reserved for the on-screen pads, in maze pixels
+  measureControlInsets(false);
+  let padL = padInsetL / cameraZoom;
+  let padR = padInsetR / cameraZoom;
+  let usableW = effectiveViewW - padL - padR;
+  if (usableW < effectiveViewW * 0.4) { padL = 0; padR = 0; usableW = effectiveViewW; }
+  const usableMidX = padL + usableW / 2;
+
   // If maze is smaller than effective view, ALWAYS center it (regardless of zoom level)
-  if (effectiveViewW >= mazeW) {
-    // Maze fits horizontally - center it on screen
-    cameraX = -(effectiveViewW - mazeW) / 2;
+  if (usableW >= mazeW) {
+    // Maze fits in the free strip - centre it there, clear of both pads
+    cameraX = -(padL + (usableW - mazeW) / 2);
   } else {
     // Maze is bigger than view - blend between Leah-centered and maze-centered based on zoom
     const zoomBlend = Math.max(0, Math.min(1, (1.0 - cameraZoom) / (1.0 - 0.35)));
-    const leahTargetX = player.displayX * CELL_SIZE - effectiveViewW / 2 + CELL_SIZE / 2;
-    const mazeCenterX = mazeW / 2 - effectiveViewW / 2;
+    const leahTargetX = player.displayX * CELL_SIZE - usableMidX + CELL_SIZE / 2;
+    const mazeCenterX = mazeW / 2 - usableMidX;
     const targetX = leahTargetX + (mazeCenterX - leahTargetX) * zoomBlend;
     cameraX += (targetX - cameraX) * 0.15;
-    cameraX = Math.max(0, Math.min(mazeW - effectiveViewW, cameraX));
+    cameraX = Math.max(-padL, Math.min(mazeW - effectiveViewW + padR, cameraX));
   }
   
   if (effectiveViewH >= mazeH) {
@@ -9482,6 +9503,7 @@ function toggleCoop() {
   try { localStorage.setItem('leahCaveCoop', coopMode ? '1' : '0'); } catch (e) {}
   const km = document.getElementById('keysModal');
   if (km && km.classList.contains('active')) buildKeysPanel();
+  applySwapPads();
   showToast(coopMode
     ? (currentLang === 'th' ? '👥 โหมด 2 คน: พ่อโฟนใช้ปุ่มขวา' : '👥 2 players: Daddy uses the right pad')
     : (currentLang === 'th' ? '👤 กลับเป็นเล่นคนเดียว' : '👤 Back to single player'));
@@ -9728,6 +9750,7 @@ function restartGame() {
 function gameLoop() {
   try {
     draw();
+    drawControlShade();
   } catch (err) {
     console.error('Draw error:', err);
   }
@@ -9738,6 +9761,93 @@ function gameLoop() {
 window.addEventListener('error', function(e) {
   console.error('Global error:', e.message, 'at', e.filename + ':' + e.lineno);
 });
+
+// ==================== PAD SIDE SWAP (co-op) ====================
+// Two players share one screen, so whoever sits on the left needs the left pad.
+function applySwapPads() {
+  let on = false;
+  try { on = localStorage.getItem('leahCavePadSwap') === '1'; } catch (e) {}
+  document.body.classList.toggle('padswap', on);
+  const b = document.getElementById('swapPadBtn');
+  if (b) b.style.borderColor = on ? '#7b1fa2' : '#c2185b';
+  measureControlInsets(true);   // the safe zone moved with the buttons
+}
+function toggleSwapPads() {
+  sfxClick();
+  let on = false;
+  try { on = localStorage.getItem('leahCavePadSwap') === '1'; } catch (e) {}
+  on = !on;
+  try { localStorage.setItem('leahCavePadSwap', on ? '1' : '0'); } catch (e) {}
+  applySwapPads();
+  const th = currentLang === 'th';
+  showToast(on
+    ? (th ? '⇄ ลีอาอยู่ขวา พ่ออยู่ซ้าย' : '⇄ Leah right, Daddy left')
+    : (th ? '⇄ ลีอาอยู่ซ้าย พ่ออยู่ขวา' : '⇄ Leah left, Daddy right'));
+}
+
+// ==================== KEEP THE MAZE OUT FROM UNDER THE BUTTONS ====================
+// The pads sit over the bottom corners of the canvas. Rather than carve holes in
+// the maze (the exit lives in the bottom-right corner, so that would wall off the
+// way out), the camera simply refuses to slide the maze that far sideways. The
+// strip that opens up shows the cave backdrop, so those corners read as scenery.
+let padInsetL = 0, padInsetR = 0, insetCheckedAt = 0;
+
+function measureControlInsets(force) {
+  const now = Date.now();
+  if (!force && now - insetCheckedAt < 500) return;
+  insetCheckedAt = now;
+  padInsetL = 0; padInsetR = 0;
+  const mc = document.getElementById('mobileControls');
+  if (!mc) return;
+  try {
+    if (getComputedStyle(mc).display === 'none') return;
+    const cr = canvas.getBoundingClientRect();
+    if (!cr.width) return;
+    const parts = [
+      document.getElementById('dpadControls'),
+      document.getElementById('dpad2Controls'),
+      document.querySelector('.attack-btn'),
+      document.getElementById('orbBtn'),
+      document.getElementById('warpBtn')
+    ];
+    for (const el of parts) {
+      if (!el) continue;
+      const st = getComputedStyle(el);
+      if (st.display === 'none' || st.visibility === 'hidden') continue;
+      const r = el.getBoundingClientRect();
+      if (!r.width || r.top > cr.bottom || r.bottom < cr.top) continue;
+      const mid = cr.left + cr.width / 2;
+      if (r.left + r.width / 2 < mid) padInsetL = Math.max(padInsetL, r.right - cr.left + 12);
+      else padInsetR = Math.max(padInsetR, cr.right - r.left + 12);
+    }
+    // Never eat more than a third of the width from either side
+    const cap = cr.width / 3;
+    padInsetL = Math.max(0, Math.min(cap, padInsetL));
+    padInsetR = Math.max(0, Math.min(cap, padInsetR));
+  } catch (e) { padInsetL = 0; padInsetR = 0; }
+}
+
+// A soft shadow in the two bottom corners so the strip reads as cave, not as a
+// gap. Semi-transparent on purpose: it can never hide a wall or a gem.
+function drawControlShade() {
+  if (!padInsetL && !padInsetR) return;
+  if (gameState !== 'playing' && gameState !== 'escape') return;
+  const h = Math.min(VIEW_HEIGHT * 0.55, 240);
+  if (padInsetL > 0) {
+    const g = ctx.createLinearGradient(0, VIEW_HEIGHT, padInsetL * 1.25, VIEW_HEIGHT - h);
+    g.addColorStop(0, 'rgba(8, 4, 16, 0.55)');
+    g.addColorStop(1, 'rgba(8, 4, 16, 0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, VIEW_HEIGHT - h, padInsetL * 1.25, h);
+  }
+  if (padInsetR > 0) {
+    const g = ctx.createLinearGradient(VIEW_WIDTH, VIEW_HEIGHT, VIEW_WIDTH - padInsetR * 1.25, VIEW_HEIGHT - h);
+    g.addColorStop(0, 'rgba(8, 4, 16, 0.55)');
+    g.addColorStop(1, 'rgba(8, 4, 16, 0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(VIEW_WIDTH - padInsetR * 1.25, VIEW_HEIGHT - h, padInsetR * 1.25, h);
+  }
+}
 
 // ==================== MUSIC VOLUME ====================
 // Only the score moves. Sound effects and the spoken questions keep their own
@@ -9799,6 +9909,10 @@ function closeMusic() {
   const m = document.getElementById('musicModal');
   if (m) m.classList.remove('active');
 }
+
+(function initPadSwap() {
+  try { applySwapPads(); } catch (e) {}
+})();
 
 (function initMusicSlider() {
   const sl = document.getElementById('musicSlider');
