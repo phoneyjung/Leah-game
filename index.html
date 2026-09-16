@@ -1017,7 +1017,7 @@
 // ==================== GAME CONFIG ====================
 // Level system - sizes are: Level 1 (50%), Level 2 (75%), Level 3 (100%)
 let currentLevel = 1; // 1, 2, or 3
-const MAX_LEVEL = 9;
+const MAX_LEVEL = 12;
 const LEVEL_SIZES = {
   1: { cols: 17, rows: 13, collectible: 'gem' },      // small cave, gems
   2: { cols: 26, rows: 19, collectible: 'cloth' },    // medium cave, cloth
@@ -1027,16 +1027,20 @@ const LEVEL_SIZES = {
   6: { cols: 51, rows: 37, collectible: 'sun' },      // the deep descent  + BOSS
   7: { cols: 53, rows: 39, collectible: 'gem' },      // the lost halls
   8: { cols: 55, rows: 41, collectible: 'star' },
-  9: { cols: 57, rows: 43, collectible: 'sun' }       // the sealed vault  + BOSS
+  9: { cols: 57, rows: 43, collectible: 'sun' },      // the sealed vault  + BOSS
+  // ---- The Egyptian labyrinth ----
+  10: { cols: 45, rows: 31, collectible: 'scarab' },   // the sand gate
+  11: { cols: 51, rows: 37, collectible: 'coin' },     // the hall of coins
+  12: { cols: 57, rows: 43, collectible: 'ankh' }      // the sun king's tomb  + BOSS
 };
 
 // A boss guards the way out every third level
-const BOSS_LEVELS = [3, 6, 9];
+const BOSS_LEVELS = [3, 6, 9, 12];
 function isBossLevel(lv) { return BOSS_LEVELS.includes(lv); }
 
 // The monsters change species every three levels, and pick up new tricks
 // as the caves get deeper.
-function monsterTier(lv) { return lv <= 3 ? 1 : lv <= 6 ? 2 : 3; }
+function monsterTier(lv) { return lv <= 3 ? 1 : lv <= 6 ? 2 : lv <= 9 ? 3 : 4; }
 const MONSTER_TRAITS = {
   1: { sight: 4,  dash: false, shoot: false },   // wanders, barely notices you
   2: { sight: 6,  dash: false, shoot: false },   // gives chase
@@ -1046,7 +1050,10 @@ const MONSTER_TRAITS = {
   6: { sight: 11, dash: true,  shoot: true },    // and spits crystal shards
   7: { sight: 9,  dash: false, shoot: true },    // new species, keeps its distance
   8: { sight: 11, dash: true,  shoot: true },
-  9: { sight: 13, dash: true,  shoot: true }     // relentless
+  9: { sight: 13, dash: true,  shoot: true },    // relentless
+  10: { sight: 7,  dash: false, shoot: false },  // scarab guards, steady but slow
+  11: { sight: 9,  dash: true,  shoot: false },  // they learn to charge
+  12: { sight: 10, dash: true,  shoot: true }    // and spit sand at range
 };
 function traits() { return MONSTER_TRAITS[currentLevel] || MONSTER_TRAITS[1]; }
 let COLS = LEVEL_SIZES[1].cols;
@@ -1093,7 +1100,17 @@ const ART_FILES = {
   fxCollect: 'art-fx-collect.jpg',  // 5-frame rainbow pickup burst
   fxShield:  'art-fx-shield.jpg',   // 5-frame shield block
   plush: 'art-plush.png',   // level 3 reward
-  hurt:  'art-mon-hurt.png' // Peb's startled face
+  hurt:  'art-mon-hurt.png', // Peb's startled face
+  // ---- Egyptian labyrinth (levels 10-12) ----
+  egyptFloor: 'art-egypt-floor.jpg',
+  egyptWall:  'art-egypt-wall.jpg',
+  egyptExit:  'art-egypt-exit.png',
+  monTier4:   'art-mon4-hurt.png',
+  boss4Sleep: 'art-boss4-sleep.png',
+  hazards4:   'art-hazards4.png',
+  itemsEgypt: 'art-items-egypt.png',
+  pillars:    'art-egypt-pillars.png',
+  fxSunbeam:  'art-fx-sunbeam.jpg'
 };
 const ITEM_INDEX = { gem: 0, cloth: 1, star: 2 };
 // Walk-cycle strips: one row of 4 frames each
@@ -1109,7 +1126,9 @@ const WALK_FILES = {
   monTier3Walk: 'art-mon3-walk.png',   // vault species
   boss3Walk:    'art-boss3-walk.png',
   boss2Walk:    'art-boss2-walk.png',  // optional: level 6 boss
-  momWalk:   'art-mom-walk.png'
+  momWalk:   'art-mom-walk.png',
+  monTier4Walk: 'art-mon4-walk.png',   // scarab guard
+  boss4Walk:    'art-boss4-walk.png'   // the Scarab King
 };
 const WALK_FRAMES = 4;
 for (const key in ART_FILES) {
@@ -1356,6 +1375,7 @@ const SFX_FILES = {
   slash:   'sfx-slash.mp3',   // Leah's lantern connecting
   slam:    'sfx-slam.mp3',
   rock:    'sfx-rock.mp3',
+  swing:   'sfx-swing.mp3',   // swinging at empty air
   crystal: 'sfx-crystal.mp3',
   bolt:    'sfx-bolt.mp3',
   warp:    'sfx-warp.mp3'
@@ -1363,7 +1383,7 @@ const SFX_FILES = {
 // Levels re-balanced after every recorded effect was normalised to the same
 // peak: the big moments (boss slam, crystal shattering) were sitting quieter
 // than ordinary hits, which read as anticlimactic.
-const SFX_VOL = { collect: 0.55, correct: 0.6, wrong: 0.5, magic: 0.5, hit: 0.55, win: 0.7, bolt: 0.65, warp: 0.6, slam: 0.8, rock: 0.5, crystal: 0.8, step: 0.22, slash: 0.6 };
+const SFX_VOL = { swing: 0.45, collect: 0.55, correct: 0.6, wrong: 0.5, magic: 0.5, hit: 0.55, win: 0.7, bolt: 0.65, warp: 0.6, slam: 0.8, rock: 0.5, crystal: 0.8, step: 0.22, slash: 0.6 };
 const sfxPool = {};
 const SFX_VOICES = 3;
 
@@ -1402,6 +1422,38 @@ function playSfx(key, rate) {
 // A falling rock is a heavy thing. The recorded sample is short and thin, so a
 // low thud is layered underneath and the pitch is nudged each time, otherwise
 // three rocks landing together turn into one flat click.
+// Swinging at empty air. This used to play the UI click, which sounded like
+// pressing a button rather than swinging a sword. A band of noise swept up and
+// back down reads as air moving past a blade.
+function sfxSwingMiss() {
+  if (playSfx('swing', 0.92 + Math.random() * 0.16)) return;
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime;
+  const dur = 0.20;
+  const buf = audioCtx.createBuffer(1, Math.floor(audioCtx.sampleRate * dur), audioCtx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  const src = audioCtx.createBufferSource();
+  src.buffer = buf;
+
+  const band = audioCtx.createBiquadFilter();
+  band.type = 'bandpass';
+  band.Q.value = 1.4;
+  // the blade passes: the band rushes up as it comes by, then falls away
+  const top = 1500 + Math.random() * 500;
+  band.frequency.setValueAtTime(480, t);
+  band.frequency.exponentialRampToValueAtTime(top, t + dur * 0.42);
+  band.frequency.exponentialRampToValueAtTime(380, t + dur);
+
+  const g = audioCtx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.30, t + dur * 0.38);
+  g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+
+  src.connect(band); band.connect(g); g.connect(sfxGain);
+  src.start(t); src.stop(t + dur);
+}
+
 function sfxRockImpact(delayMs) {
   const go = () => {
     const had = playSfx('rock', 0.88 + Math.random() * 0.24);
@@ -1606,7 +1658,8 @@ function sfxToast() {
 // ==================== RECORDED SOUNDTRACK ====================
 // Two looping mp3s. If either file is missing the game falls straight back
 // to the synthesised score, so nothing breaks and the cave is never silent.
-const TRACKS = { calm: 'bgm-calm.mp3', escape: 'bgm-escape.mp3', boss: 'bgm-boss.mp3', boss2: 'bgm-boss2.mp3', deep: 'bgm-deep.mp3', victory: 'bgm-victory.mp3' };
+const TRACKS = { calm: 'bgm-calm.mp3', escape: 'bgm-escape.mp3', boss: 'bgm-boss.mp3', boss2: 'bgm-boss2.mp3', deep: 'bgm-deep.mp3', victory: 'bgm-victory.mp3',
+                 egypt: 'bgm-egypt.mp3', egyptBoss: 'bgm-egypt-boss.mp3' };
 const music = {};
 let musicTrack = null;       // 'calm' | 'escape' | null
 const MUSIC_BASE = 0.28;   // background score sits well under the effects
@@ -1670,7 +1723,7 @@ function applyMusicMute() {
 
 function startBGM() {
   // The last three levels get their own, more solemn score
-  const key = currentLevel >= 7 ? 'deep' : 'calm';
+  const key = currentLevel >= 10 ? 'egypt' : currentLevel >= 7 ? 'deep' : 'calm';
   if (playTrack(key) || playTrack('calm')) { stopSynthBGM(); return; }
   if (!audioCtx || bgmRunning) return;
   bgmRunning = true;
@@ -2856,8 +2909,101 @@ const HARD_EN = [
 questions.push(...HARD_EN);
 questionsTH.push(...HARD_TH);
 
+// ---------- Extra arithmetic, pitched at 7 with a little room to grow ----------
+// d: 1 is Grade 1 work, d: 2 is late Grade 1 / early Grade 2. Nothing here goes
+// past what an eight-year-old meets at school.
+const MATH_TH = [
+  { q: "6 + 7 เท่ากับเท่าไหร่?", options: ["12", "13", "14", "15"], answer: 1, d: 1 },
+  { q: "8 + 6 เท่ากับเท่าไหร่?", options: ["14", "15", "13", "16"], answer: 0, d: 1 },
+  { q: "9 + 8 เท่ากับเท่าไหร่?", options: ["16", "18", "17", "19"], answer: 2, d: 1 },
+  { q: "7 + 7 เท่ากับเท่าไหร่?", options: ["12", "13", "15", "14"], answer: 3, d: 1 },
+  { q: "13 - 5 เท่ากับเท่าไหร่?", options: ["7", "8", "9", "6"], answer: 1, d: 1 },
+  { q: "16 - 9 เท่ากับเท่าไหร่?", options: ["8", "6", "7", "9"], answer: 2, d: 1 },
+  { q: "14 - 6 เท่ากับเท่าไหร่?", options: ["8", "7", "9", "10"], answer: 0, d: 1 },
+  { q: "20 - 8 เท่ากับเท่าไหร่?", options: ["11", "13", "14", "12"], answer: 3, d: 1 },
+  { q: "10 + 10 เท่ากับเท่าไหร่?", options: ["18", "20", "22", "19"], answer: 1, d: 1 },
+  { q: "3 + 3 + 3 เท่ากับเท่าไหร่?", options: ["6", "9", "12", "8"], answer: 1, d: 1 },
+  { q: "นับทีละ 2 คือ 2 4 6 8 ต่อไปคือเลขอะไร?", options: ["9", "10", "11", "12"], answer: 1, d: 1 },
+  { q: "นับทีละ 5 คือ 5 10 15 ต่อไปคือเลขอะไร?", options: ["16", "18", "20", "25"], answer: 2, d: 1 },
+  { q: "นับทีละ 10 คือ 10 20 30 ต่อไปคือเลขอะไร?", options: ["31", "35", "40", "50"], answer: 2, d: 1 },
+  { q: "ลีอามีเพชร 5 เม็ด เก็บเพิ่มอีก 4 เม็ด รวมกี่เม็ด?", options: ["8", "9", "10", "7"], answer: 1, d: 1 },
+  { q: "มีขนม 12 ชิ้น กินไป 3 ชิ้น เหลือกี่ชิ้น?", options: ["8", "9", "10", "11"], answer: 1, d: 1 },
+  { q: "เลขอะไรอยู่ระหว่าง 7 กับ 9?", options: ["6", "8", "10", "11"], answer: 1, d: 1 },
+  { q: "15 กับ 12 เลขไหนมากกว่า?", options: ["12", "15", "เท่ากัน", "บอกไม่ได้"], answer: 1, d: 1 },
+  { q: "ครึ่งหนึ่งของ 10 คือเท่าไหร่?", options: ["4", "5", "6", "3"], answer: 1, d: 1 },
+  { q: "ครึ่งหนึ่งของ 8 คือเท่าไหร่?", options: ["3", "5", "4", "2"], answer: 2, d: 1 },
+  { q: "18 เป็นเลขคู่หรือเลขคี่?", options: ["เลขคู่", "เลขคี่", "ทั้งสองอย่าง", "ไม่ใช่ทั้งคู่"], answer: 0, d: 1 },
+  { q: "20 + 30 เท่ากับเท่าไหร่?", options: ["40", "50", "60", "55"], answer: 1, d: 2 },
+  { q: "45 + 20 เท่ากับเท่าไหร่?", options: ["55", "60", "65", "70"], answer: 2, d: 2 },
+  { q: "34 + 5 เท่ากับเท่าไหร่?", options: ["38", "39", "40", "41"], answer: 1, d: 2 },
+  { q: "50 - 20 เท่ากับเท่าไหร่?", options: ["20", "25", "30", "40"], answer: 2, d: 2 },
+  { q: "68 - 8 เท่ากับเท่าไหร่?", options: ["58", "60", "62", "66"], answer: 1, d: 2 },
+  { q: "25 + 25 เท่ากับเท่าไหร่?", options: ["40", "45", "50", "55"], answer: 2, d: 2 },
+  { q: "100 - 30 เท่ากับเท่าไหร่?", options: ["60", "70", "80", "90"], answer: 1, d: 2 },
+  { q: "2 × 4 เท่ากับเท่าไหร่?", options: ["6", "7", "8", "9"], answer: 2, d: 2 },
+  { q: "5 × 3 เท่ากับเท่าไหร่?", options: ["12", "15", "18", "20"], answer: 1, d: 2 },
+  { q: "10 × 4 เท่ากับเท่าไหร่?", options: ["14", "24", "40", "44"], answer: 2, d: 2 },
+  { q: "2 × 7 เท่ากับเท่าไหร่?", options: ["12", "14", "16", "18"], answer: 1, d: 2 },
+  { q: "5 × 5 เท่ากับเท่าไหร่?", options: ["20", "25", "30", "35"], answer: 1, d: 2 },
+  { q: "แบ่งขนม 12 ชิ้น ให้เด็ก 2 คนเท่ากัน ได้คนละกี่ชิ้น?", options: ["4", "5", "6", "8"], answer: 2, d: 2 },
+  { q: "แบ่งเพชร 15 เม็ด ใส่ถุง 3 ใบเท่ากัน ถุงละกี่เม็ด?", options: ["3", "4", "5", "6"], answer: 2, d: 2 },
+  { q: "ลีอามีเงิน 50 บาท ซื้อนม 20 บาท เหลือกี่บาท?", options: ["20", "25", "30", "35"], answer: 2, d: 2 },
+  { q: "เหรียญ 10 บาท 3 เหรียญ รวมเป็นกี่บาท?", options: ["13", "20", "30", "40"], answer: 2, d: 2 },
+  { q: "1 ชั่วโมงมีกี่นาที?", options: ["30", "50", "60", "100"], answer: 2, d: 2 },
+  { q: "1 สัปดาห์มีกี่วัน?", options: ["5", "6", "7", "10"], answer: 2, d: 2 },
+  { q: "ถ้าวันนี้วันจันทร์ อีก 2 วันเป็นวันอะไร?", options: ["อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์"], answer: 1, d: 2 },
+  { q: "7 + 8 - 5 เท่ากับเท่าไหร่?", options: ["9", "10", "11", "12"], answer: 1, d: 2 }
+];
+
+const MATH_EN = [
+  { q: "What is 6 + 7?", options: ["12", "13", "14", "15"], answer: 1, d: 1 },
+  { q: "What is 8 + 6?", options: ["14", "15", "13", "16"], answer: 0, d: 1 },
+  { q: "What is 9 + 8?", options: ["16", "18", "17", "19"], answer: 2, d: 1 },
+  { q: "What is 7 + 7?", options: ["12", "13", "15", "14"], answer: 3, d: 1 },
+  { q: "What is 13 - 5?", options: ["7", "8", "9", "6"], answer: 1, d: 1 },
+  { q: "What is 16 - 9?", options: ["8", "6", "7", "9"], answer: 2, d: 1 },
+  { q: "What is 14 - 6?", options: ["8", "7", "9", "10"], answer: 0, d: 1 },
+  { q: "What is 20 - 8?", options: ["11", "13", "14", "12"], answer: 3, d: 1 },
+  { q: "What is 10 + 10?", options: ["18", "20", "22", "19"], answer: 1, d: 1 },
+  { q: "What is 3 + 3 + 3?", options: ["6", "9", "12", "8"], answer: 1, d: 1 },
+  { q: "Count by 2: 2, 4, 6, 8, then what?", options: ["9", "10", "11", "12"], answer: 1, d: 1 },
+  { q: "Count by 5: 5, 10, 15, then what?", options: ["16", "18", "20", "25"], answer: 2, d: 1 },
+  { q: "Count by 10: 10, 20, 30, then what?", options: ["31", "35", "40", "50"], answer: 2, d: 1 },
+  { q: "Leah has 5 gems and finds 4 more. How many now?", options: ["8", "9", "10", "7"], answer: 1, d: 1 },
+  { q: "There are 12 sweets. You eat 3. How many are left?", options: ["8", "9", "10", "11"], answer: 1, d: 1 },
+  { q: "Which number comes between 7 and 9?", options: ["6", "8", "10", "11"], answer: 1, d: 1 },
+  { q: "Which is bigger, 15 or 12?", options: ["12", "15", "They are equal", "Cannot tell"], answer: 1, d: 1 },
+  { q: "What is half of 10?", options: ["4", "5", "6", "3"], answer: 1, d: 1 },
+  { q: "What is half of 8?", options: ["3", "5", "4", "2"], answer: 2, d: 1 },
+  { q: "Is 18 an even number or an odd number?", options: ["Even", "Odd", "Both", "Neither"], answer: 0, d: 1 },
+  { q: "What is 20 + 30?", options: ["40", "50", "60", "55"], answer: 1, d: 2 },
+  { q: "What is 45 + 20?", options: ["55", "60", "65", "70"], answer: 2, d: 2 },
+  { q: "What is 34 + 5?", options: ["38", "39", "40", "41"], answer: 1, d: 2 },
+  { q: "What is 50 - 20?", options: ["20", "25", "30", "40"], answer: 2, d: 2 },
+  { q: "What is 68 - 8?", options: ["58", "60", "62", "66"], answer: 1, d: 2 },
+  { q: "What is 25 + 25?", options: ["40", "45", "50", "55"], answer: 2, d: 2 },
+  { q: "What is 100 - 30?", options: ["60", "70", "80", "90"], answer: 1, d: 2 },
+  { q: "What is 2 x 4?", options: ["6", "7", "8", "9"], answer: 2, d: 2 },
+  { q: "What is 5 x 3?", options: ["12", "15", "18", "20"], answer: 1, d: 2 },
+  { q: "What is 10 x 4?", options: ["14", "24", "40", "44"], answer: 2, d: 2 },
+  { q: "What is 2 x 7?", options: ["12", "14", "16", "18"], answer: 1, d: 2 },
+  { q: "What is 5 x 5?", options: ["20", "25", "30", "35"], answer: 1, d: 2 },
+  { q: "Share 12 sweets equally between 2 children. How many each?", options: ["4", "5", "6", "8"], answer: 2, d: 2 },
+  { q: "Put 15 gems equally into 3 bags. How many in each bag?", options: ["3", "4", "5", "6"], answer: 2, d: 2 },
+  { q: "Leah has 50 baht and spends 20. How much is left?", options: ["20", "25", "30", "35"], answer: 2, d: 2 },
+  { q: "Three 10-baht coins make how much?", options: ["13", "20", "30", "40"], answer: 2, d: 2 },
+  { q: "How many minutes are in one hour?", options: ["30", "50", "60", "100"], answer: 2, d: 2 },
+  { q: "How many days are in one week?", options: ["5", "6", "7", "10"], answer: 2, d: 2 },
+  { q: "If today is Monday, what day is it in 2 days?", options: ["Tuesday", "Wednesday", "Thursday", "Friday"], answer: 1, d: 2 },
+  { q: "What is 7 + 8 - 5?", options: ["9", "10", "11", "12"], answer: 1, d: 2 }
+];
+
+questions.push(...MATH_EN);
+questionsTH.push(...MATH_TH);
+
 // Which difficulties each level may draw from
-const LEVEL_DIFFICULTY = { 1: [1], 2: [1], 3: [1, 2], 4: [2, 3], 5: [3], 6: [3], 7: [3], 8: [3], 9: [3] };
+const LEVEL_DIFFICULTY = { 1: [1], 2: [1], 3: [1, 2], 4: [2, 3], 5: [3], 6: [3], 7: [3], 8: [3], 9: [3],
+                           10: [2, 3], 11: [2, 3], 12: [2, 3] };
 
 let activeQuestions = [];
 let maze = [];
@@ -2868,6 +3014,12 @@ let gemsCollected = 0;
 let currentQuestionIndex = -1;
 let gameState = 'intro';
 let escapeTimeLeft = 300;
+// Now that the way out is genuinely at the far corner, the run needs time that
+// scales with the maze instead of a flat five minutes for every level.
+function escapeSeconds() {
+  const cells = COLS * ROWS;
+  return Math.max(300, Math.min(600, Math.round(240 + cells * 0.11)));
+}
 let escapeTimer = null;
 let cameraX = 0, cameraY = 0;
 let particles = [];
@@ -3156,7 +3308,7 @@ function drawArenaHazards() {
     g.addColorStop(1, 'rgba(80, 220, 200, 0)');
     ctx.fillStyle = g;
     ctx.fillRect(px - CELL_SIZE * 0.8, py - CELL_SIZE * 0.8, CELL_SIZE * 1.6, CELL_SIZE * 1.6);
-    const hz = (monsterTier(currentLevel) === 3 && ART.hazards3) ? ART.hazards3 : ART.hazards;
+    const hz = hazardSheet();
     if (hz) {
       const fw = hz.width / 3, sz = CELL_SIZE * 0.85;
       ctx.drawImage(hz, 2 * fw, 0, fw, hz.height,
@@ -3233,7 +3385,7 @@ function drawArenaHazards() {
                       px - sz / 2, py - sz * 0.62, sz, sz);
         ctx.restore();
       } else {
-        const hz2 = (monsterTier(currentLevel) === 3 && ART.hazards3) ? ART.hazards3 : ART.hazards;
+        const hz2 = hazardSheet();
         const fw = hz2.width / 3, sz = CELL_SIZE * 1.1 * (0.5 + k * 0.5);
         ctx.drawImage(hz2, 1 * fw, 0, fw, hz2.height, px - sz / 2, py - sz * 0.78, sz, sz);
       }
@@ -3412,8 +3564,9 @@ function enterBossArena() {
     if (daddyCompanion) { daddyCompanion.displayX = player.x; daddyCompanion.displayY = player.y + 0; }
 
     const bx = Math.floor(ARENA_W / 2), by = Math.floor(ARENA_H / 2) - 1;
-    const armored = currentLevel === 9;
-    const hp = currentLevel === 3 ? 5 : currentLevel === 6 ? 8 : 4;
+    const armored = currentLevel === 9 || currentLevel === 12;
+    // The Scarab King asks for a puzzle each time, so three rounds is plenty
+    const hp = currentLevel === 3 ? 5 : currentLevel === 6 ? 8 : currentLevel === 12 ? 3 : 4;
     boss = {
       x: bx, y: by, displayX: bx, displayY: by,
       hp, maxHp: hp, moveTimer: 0, hurtUntil: 0, face: -1, phase: 0,
@@ -3424,7 +3577,9 @@ function enterBossArena() {
     bossFightStart = Date.now();
     nextAutoHint = Date.now() + 60000;
     setupArenaHazards();
-    if (!playTrack('boss')) startEscapeBGM();                     // the fight gets the tense track
+    setupSunPuzzle();
+    const bossKey = currentLevel >= 10 ? 'egyptBoss' : 'boss';
+    if (!playTrack(bossKey) && !playTrack('boss')) startEscapeBGM();   // the fight gets the tense track
     showToast(currentLang === 'th'
       ? '👑 เจ้าถ้ำขวางทางอยู่! หลบหลังเสาแล้วให้พ่อยิงเวท'
       : '👑 The cave king blocks the way! Hide behind the pillars and cast');
@@ -3464,12 +3619,14 @@ function drawSleepingBoss() {
   if (inBossFight || !bossGate || !bossDefeated) return;
   const px = bossGate.x * CELL_SIZE + CELL_SIZE / 2;
   const py = bossGate.y * CELL_SIZE + CELL_SIZE / 2;
-  const sleepArt = (monsterTier(currentLevel) === 3 && ART.boss3Sleep) ? ART.boss3Sleep : ART.bossSleep;
+  const tierNow = monsterTier(currentLevel);
+  const sleepArt = (tierNow === 4 && ART.boss4Sleep) ? ART.boss4Sleep
+                 : (tierNow === 3 && ART.boss3Sleep) ? ART.boss3Sleep : ART.bossSleep;
   if (sleepArt) {
     const h = CELL_SIZE * 1.5, w = sleepArt.width * h / sleepArt.height;
     ctx.drawImage(sleepArt, px - w / 2, py + CELL_SIZE * 0.5 - h, w, h);
   } else {
-    const sheet = (monsterTier(currentLevel) > 1 && ART.boss2Walk) ? ART.boss2Walk : ART.bossWalk;
+    const sheet = bossSheet();
     const size = CELL_SIZE * 2.2;
     ctx.save();
     ctx.globalAlpha = 0.85;
@@ -3556,6 +3713,206 @@ function updateBoss() {
 
 // Weapons bounce off the guardian. The arena hazards are the only thing that
 // can dent him, so Leah has to lure him onto a vent or under a falling rock.
+// Which hazard and boss sheets this level uses
+function hazardSheet() {
+  const tier = monsterTier(currentLevel);
+  if (tier === 4 && ART.hazards4) return ART.hazards4;
+  if (tier === 3 && ART.hazards3) return ART.hazards3;
+  return ART.hazards;
+}
+function bossSheet() {
+  const tier = monsterTier(currentLevel);
+  if (tier === 4 && ART.boss4Walk) return ART.boss4Walk;
+  if (tier === 3 && ART.boss3Walk) return ART.boss3Walk;
+  if (tier > 1 && ART.boss2Walk) return ART.boss2Walk;
+  return ART.bossWalk;
+}
+
+// ==================== SUN PUZZLE (level 12 boss) ====================
+// The Scarab King's shell shrugs off every weapon. The only thing that works is
+// opening the ceiling, and that means stepping on three pillars in the order the
+// wall tablet showed. It is pure memory: there is no timer on the answer and a
+// wrong step costs no health, so a seven-year-old can take as long as she likes.
+const SUN_SYMBOLS = ['☀️', '🌙', '⭐'];
+let sunPillars = [];        // {x, y, idx}
+let sunSequence = [];       // the order she has to repeat
+let sunProgress = 0;
+let sunShowUntil = 0;       // tablet is on screen until this moment
+let sunStunUntil = 0;       // boss is dazzled and hittable until this moment
+let sunRound = 0;
+let sunBeamAt = 0;
+let sunMisses = 0;          // wrong steps this round
+const SUN_SHOW_MS = 6000;   // how long the tablet stays up
+const SUN_MAX_LEN = 4;      // never more than four symbols to remember
+const SUN_STUN_MS = 10000;  // plenty of time to walk over and swing
+
+function isSunPuzzleLevel() { return currentLevel === 12; }
+
+function setupSunPuzzle() {
+  sunPillars = []; sunSequence = []; sunProgress = 0; sunRound = 0;
+  sunStunUntil = 0; sunBeamAt = 0;
+  if (!isSunPuzzleLevel()) return;
+  const cx = Math.floor(ARENA_W / 2), cy = Math.floor(ARENA_H / 2);
+  const spots = [[-6, -4], [0, 5], [6, -4]];
+  for (let i = 0; i < spots.length; i++) {
+    const x = cx + spots[i][0], y = cy + spots[i][1];
+    if (maze[y] && maze[y][x] !== undefined) {
+      maze[y][x] = 0;                       // the plate is always walkable
+      sunPillars.push({ x, y, idx: i, litUntil: 0 });
+    }
+  }
+  newSunRound();
+}
+
+function newSunRound() {
+  sunRound++;
+  const len = Math.min(SUN_MAX_LEN, 2 + sunRound);   // 3, then 4, and no further
+  sunMisses = 0;
+  sunSequence = [];
+  for (let i = 0; i < len; i++) sunSequence.push(Math.floor(Math.random() * 3));
+  sunProgress = 0;
+  showSunTablet();
+}
+
+function showSunTablet() {
+  // After two slips the tablet simply stays up: she has clearly not caught it,
+  // and there is nothing to be gained by making her guess.
+  sunShowUntil = Date.now() + (sunMisses >= 2 ? 600000 : SUN_SHOW_MS);
+  const th = currentLang === 'th';
+  showToast((th ? '📜 จำลำดับให้ดี  ' : '📜 Remember the order  ')
+            + sunSequence.map(i => SUN_SYMBOLS[i]).join(' '));
+  if (!playSfx('glyph')) sfxMagic();
+}
+
+// Called from movePlayer whenever she lands on a tile
+function sunPuzzleStep(x, y) {
+  if (!isSunPuzzleLevel() || !inBossFight || bossDefeated) return;
+  if (Date.now() < sunStunUntil) return;      // already open, no need to press
+  const p = sunPillars.find(q => q.x === x && q.y === y);
+  if (!p) return;
+  const th = currentLang === 'th';
+  if (p.idx === sunSequence[sunProgress]) {
+    p.litUntil = Date.now() + 700;
+    sunProgress++;
+    if (!playSfx('glyph')) sfxCorrect();
+    if (sunProgress >= sunSequence.length) {
+      openSunCeiling();
+    } else {
+      showToast((th ? '✅ ถูก! เหลืออีก ' : '✅ Yes! ')
+                + (sunSequence.length - sunProgress) + (th ? ' เสา' : ' to go'));
+    }
+  } else {
+    // A miss only costs her the sequence, never a heart
+    sunProgress = 0;
+    sunMisses++;
+    addShake(4);
+    if (!playSfx('sand')) sfxWrong();
+    showToast(th ? '🌀 ทรายพัด! ดูลำดับใหม่อีกครั้ง' : '🌀 Sand swirls! Watch the order again');
+    setTimeout(showSunTablet, 700);
+  }
+}
+
+function openSunCeiling() {
+  sunStunUntil = Date.now() + SUN_STUN_MS;
+  sunBeamAt = Date.now();
+  addShake(10);
+  if (!playSfx('stonedoor')) sfxRumble();
+  if (boss) { boss.armored = false; boss.hurtUntil = Date.now() + 400; }
+  showToast(currentLang === 'th'
+    ? '☀️ เพดานเปิด! แสงส่องใส่มัน รีบฟันเลย!'
+    : '☀️ The ceiling opens! Strike now!');
+}
+
+// Re-armours the king once the sunlight fades, and sets a fresh order
+function updateSunPuzzle() {
+  if (!isSunPuzzleLevel() || !inBossFight || bossDefeated || !boss) return;
+  if (sunStunUntil && Date.now() > sunStunUntil) {
+    sunStunUntil = 0;
+    boss.armored = true;
+    newSunRound();
+    showToast(currentLang === 'th'
+      ? '🛡️ เกราะกลับมาแล้ว! หาลำดับใหม่'
+      : '🛡️ His armour is back! Find the new order');
+  }
+}
+
+function drawSunPuzzle() {
+  if (!isSunPuzzleLevel() || !inBossFight) return;
+  const now = Date.now();
+  for (const p of sunPillars) {
+    const px = p.x * CELL_SIZE + CELL_SIZE / 2;
+    const py = p.y * CELL_SIZE + CELL_SIZE / 2;
+    const lit = now < p.litUntil;
+    const glow = lit ? 0.75 : 0.30 + Math.sin(now / 420 + p.idx) * 0.12;
+    const g = ctx.createRadialGradient(px, py, 0, px, py, CELL_SIZE * 1.1);
+    g.addColorStop(0, `rgba(255,205,90,${glow})`);
+    g.addColorStop(1, 'rgba(255,205,90,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(px - CELL_SIZE * 1.1, py - CELL_SIZE * 1.1, CELL_SIZE * 2.2, CELL_SIZE * 2.2);
+    if (ART.pillars) {
+      const fw = ART.pillars.width / 3;
+      const h = CELL_SIZE * 1.7, w = fw * h / ART.pillars.height;
+      ctx.drawImage(ART.pillars, p.idx * fw, 0, fw, ART.pillars.height,
+                    px - w / 2, py + CELL_SIZE * 0.45 - h, w, h);
+    } else {
+      ctx.font = `${Math.round(CELL_SIZE * 0.9)}px serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(SUN_SYMBOLS[p.idx], px, py);
+    }
+  }
+
+  // The tablet: the order floating above the arena while she memorises it
+  if (now < sunShowUntil && boss) {
+    const bx = boss.displayX * CELL_SIZE + CELL_SIZE / 2;
+    const by = boss.displayY * CELL_SIZE - CELL_SIZE * 1.6;
+    const w = CELL_SIZE * (sunSequence.length * 0.95 + 0.6), h = CELL_SIZE * 1.1;
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, (sunShowUntil - now) / 500);
+    ctx.fillStyle = 'rgba(30,18,6,0.82)';
+    ctx.strokeStyle = 'rgba(255,205,90,0.9)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(bx - w / 2, by - h / 2, w, h, 10);
+    else ctx.rect(bx - w / 2, by - h / 2, w, h);
+    ctx.fill(); ctx.stroke();
+    ctx.font = `${Math.round(CELL_SIZE * 0.62)}px serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (let i = 0; i < sunSequence.length; i++) {
+      ctx.fillText(SUN_SYMBOLS[sunSequence[i]],
+                   bx - w / 2 + CELL_SIZE * (0.3 + 0.95 * i) + CELL_SIZE * 0.45, by);
+    }
+    ctx.restore();
+  }
+
+  // The shaft of sunlight after a correct order
+  if (sunBeamAt && boss) {
+    const k = (now - sunBeamAt) / 900;
+    if (k <= 1) {
+      const bx = boss.displayX * CELL_SIZE + CELL_SIZE / 2;
+      const by = boss.displayY * CELL_SIZE + CELL_SIZE / 2;
+      if (ART.fxSunbeam) {
+        const fw = ART.fxSunbeam.width / 5;
+        const f = Math.min(4, Math.floor(k * 5));
+        const w = CELL_SIZE * 4.2, h = CELL_SIZE * 6.0;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.drawImage(ART.fxSunbeam, f * fw, 0, fw, ART.fxSunbeam.height,
+                      bx - w / 2, by - h + CELL_SIZE * 0.6, w, h);
+        ctx.restore();
+      } else {
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const g = ctx.createLinearGradient(bx, by - CELL_SIZE * 6, bx, by);
+        g.addColorStop(0, 'rgba(255,225,140,0)');
+        g.addColorStop(1, `rgba(255,225,140,${0.5 * (1 - k)})`);
+        ctx.fillStyle = g;
+        ctx.fillRect(bx - CELL_SIZE * 1.4, by - CELL_SIZE * 6, CELL_SIZE * 2.8, CELL_SIZE * 6);
+        ctx.restore();
+      }
+    } else sunBeamAt = 0;
+  }
+}
+
 function bossArmorBounce() {
   boss.bounces++;
   addShake(5);
@@ -3564,6 +3921,15 @@ function bossArmorBounce() {
   const th = currentLang === 'th';
   if (boss.bounces === 1 || boss.bounces % 4 === 0) {
     showToast(th ? '🛡️ เกราะแข็งเกินไป! อาวุธไม่เข้า' : '🛡️ Too tough! Weapons bounce off');
+  }
+  if (isSunPuzzleLevel()) {
+    if (boss.bounces === 2 || boss.bounces % 5 === 0) {
+      showToast(th
+        ? '🧙 พ่อโฟน: "เหยียบเสาตามลำดับบนแผ่นจารึกสิลูก แล้วแสงจะส่องลงมา!"'
+        : '🧙 Daddy: "Step on the pillars in the order on the tablet — then the sunlight comes!"');
+      if (Date.now() > sunShowUntil) showSunTablet();
+    }
+    return;
   }
   // After a few failed swings, Daddy points at what actually works
   if (boss.bounces === 5) {
@@ -3686,7 +4052,8 @@ function drawBoss() {
 
   ctx.save();
   if (hurt) ctx.globalAlpha = 0.55 + Math.sin(Date.now() / 50) * 0.35;
-  const sheet = (boss.tier === 3 && ART.boss3Walk) ? ART.boss3Walk
+  const sheet = (boss.tier === 4 && ART.boss4Walk) ? ART.boss4Walk
+              : (boss.tier === 3 && ART.boss3Walk) ? ART.boss3Walk
               : (boss.tier === 2 && ART.boss2Walk) ? ART.boss2Walk
               : (ART.bossWalk || ART.monWalk);
   if (sheet) {
@@ -4125,7 +4492,16 @@ function setSlot(n) {
 // Per-run scoring for the 3-star rating
 let runHits = 0;          // times a monster caught Leah this level
 let runStartTime = 0;     // when the level began
-const PAR_SECONDS = { 1: 120, 2: 210, 3: 300, 4: 360, 5: 420, 6: 480, 7: 520, 8: 560, 9: 620 }; // beat this for the speed star
+// Time allowed for the speed star. Worked out from the number of cells in each
+// maze plus a fixed allowance, because a child stops to read and answer ten
+// questions on the way. Levels 10-12 were missing entirely and were falling
+// back to 240s, which was harsher than level 9 despite being bigger mazes.
+const PAR_SECONDS = {
+  1: 210, 2: 300, 3: 430, 4: 530, 5: 650, 6: 760,
+  7: 820, 8: 880, 9: 950, 10: 600, 11: 760, 12: 950
+};
+// One unlucky bump should not cost the whole star
+const HITS_ALLOWED = 1;
 
 function loadStars() {
   try { return JSON.parse(localStorage.getItem(STARS_KEY)) || {}; } catch (e) { return {}; }
@@ -4140,7 +4516,7 @@ function saveStars(level, earned) {
 // Which stars did this run earn? [allCollected, noHits, underPar]
 function runStars() {
   const secs = (Date.now() - runStartTime) / 1000;
-  return [true, runHits === 0, secs <= (PAR_SECONDS[currentLevel] || 240)];
+  return [true, runHits <= HITS_ALLOWED, secs <= (PAR_SECONDS[currentLevel] || 600)];
 }
 function saveProgress() {
   try { localStorage.setItem(SAVE_KEY, JSON.stringify({ level: currentLevel })); } catch (e) {}
@@ -4294,6 +4670,11 @@ function generateMaze() {
   maze[ROWS - 2][COLS - 2] = 0;
   maze[ROWS - 2][COLS - 3] = 0;
   maze[ROWS - 3][COLS - 2] = 0;
+
+  // The far corner is carved open just above, and the exit belongs there. This
+  // used to be set once at start-up and never again, so every level after the
+  // first kept level 1's corner and the way out sat a few steps from the start.
+  exitPos = { x: COLS - 2, y: ROWS - 2 };
   
   const shuffled = [];
   activeQuestions = [];
@@ -5194,10 +5575,12 @@ function draw() {
       
       // Photo-real cave tiles when the textures are available
       if (ART.wall && ART.floor) {
-        const arenaTex = inBossFight && ART.bossFloor && ART.bossWall;
+        // The Egyptian levels swap in sandstone; the cave set is the fallback
+        const egy = currentLevel >= 10 && ART.egyptFloor && ART.egyptWall;
+        const arenaTex = inBossFight && !egy && ART.bossFloor && ART.bossWall;
         const tex = cell === 1
-          ? (arenaTex ? ART.bossWall : ART.wall)
-          : (arenaTex ? ART.bossFloor : ART.floor);
+          ? (egy ? ART.egyptWall : arenaTex ? ART.bossWall : ART.wall)
+          : (egy ? ART.egyptFloor : arenaTex ? ART.bossFloor : ART.floor);
         // Rotate some cells so the repetition is not obvious
         const rot = ((x * 7 + y * 13) % 4) * Math.PI / 2;
         ctx.save();
@@ -5310,15 +5693,16 @@ function draw() {
         // Bigger glowing exit portal
         const time = Date.now() / 300;
         const pulse = Math.sin(time) * 0.3 + 0.7;
-        if (ART.exitArt) {
+        const exitArt = (currentLevel >= 10 && ART.egyptExit) ? ART.egyptExit : ART.exitArt;
+        if (exitArt) {
           const g = ctx.createRadialGradient(px + CELL_SIZE/2, py + CELL_SIZE/2, 0,
                                              px + CELL_SIZE/2, py + CELL_SIZE/2, CELL_SIZE * 1.5);
           g.addColorStop(0, `rgba(255, 230, 150, ${0.45 * pulse})`);
           g.addColorStop(1, 'rgba(255, 200, 80, 0)');
           ctx.fillStyle = g;
           ctx.fillRect(px - CELL_SIZE, py - CELL_SIZE, CELL_SIZE * 3, CELL_SIZE * 3);
-          const h = CELL_SIZE * 1.5, w = ART.exitArt.width * h / ART.exitArt.height;
-          ctx.drawImage(ART.exitArt, px + CELL_SIZE/2 - w/2, py + CELL_SIZE - h, w, h);
+          const h = CELL_SIZE * 1.5, w = exitArt.width * h / exitArt.height;
+          ctx.drawImage(exitArt, px + CELL_SIZE/2 - w/2, py + CELL_SIZE - h, w, h);
           continue;
         }
         
@@ -5364,8 +5748,9 @@ function draw() {
   if (daddyCompanion) drawDaddyCompanion();
   
   // Draw sword slash effect
-  if (!frozen) { updateDadOrbs(); updateBoss(); updateMonShots(); updateArenaHazards(); }
+  if (!frozen) { updateDadOrbs(); updateBoss(); updateMonShots(); updateArenaHazards(); updateSunPuzzle(); }
   drawArenaHazards();
+  drawSunPuzzle();
   drawMonShots();
   updateWarpAnim(16);
   drawWarpBeam();
@@ -5583,6 +5968,21 @@ function drawCollectible(cx, cy, seed) {
     const t = Date.now() / 1000;
     const fw = ART.items.width / 3;
     const idx = ITEM_INDEX[type] ?? 0;
+    // Egyptian treasures have their own sheet: scarab, coin, ankh
+    const EGY = { scarab: 0, coin: 1, ankh: 2 };
+    if (EGY[type] !== undefined && ART.itemsEgypt) {
+      const fw = ART.itemsEgypt.width / 3;
+      const size = CELL_SIZE * 0.80;
+      const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, size * 1.2);
+      halo.addColorStop(0, `rgba(255,205,90,${0.40 + Math.sin(t * 3 + seed) * 0.12})`);
+      halo.addColorStop(1, 'rgba(255,205,90,0)');
+      ctx.fillStyle = halo;
+      ctx.fillRect(cx - size * 1.2, cy - size * 1.2, size * 2.4, size * 2.4);
+      const fl = Math.sin(t * 2 + seed) * 2.2;
+      ctx.drawImage(ART.itemsEgypt, EGY[type] * fw, 0, fw, ART.itemsEgypt.height,
+                    cx - size / 2, cy - size / 2 + fl, size, size);
+      return;
+    }
     // Moonstone and sunstone reuse the star artwork under a coloured light
     if ((type === 'moon' || type === 'sun') && ART.items2) {
       const idx = type === 'moon' ? 0 : 1;
@@ -5905,7 +6305,8 @@ function drawZombie(z) {
     ctx.ellipse(px, py + CELL_SIZE * 0.44, CELL_SIZE * 0.24, CELL_SIZE * 0.075, 0, 0, Math.PI * 2);
     ctx.fill();
     // Cyan crystal glow on its back
-    const aura = monsterTier(currentLevel) === 3 ? '255, 140, 40'
+    const aura = monsterTier(currentLevel) === 4 ? '255, 205, 80'
+               : monsterTier(currentLevel) === 3 ? '255, 140, 40'
                : monsterTier(currentLevel) === 2 ? '150, 120, 255' : '90, 230, 255';
     const gl = ctx.createRadialGradient(px, py, 0, px, py, CELL_SIZE * 0.7);
     gl.addColorStop(0, `rgba(${aura}, 0.32)`);
@@ -5917,7 +6318,15 @@ function drawZombie(z) {
     ctx.rotate(waddle);
     ctx.translate(-px, -(py + CELL_SIZE * 0.46));
     const tier = monsterTier(currentLevel);
-    if (tier === 3) {
+    if (tier === 4 && (ART.monTier4Walk || ART.monTier4)) {
+      if (hurt && (ART.monTier4 || ART.hurt)) {
+        const rx = Math.sign(px - (player.displayX * CELL_SIZE + CELL_SIZE / 2)) * 1.6;
+        drawSprite(ctx, ART.monTier4 || ART.hurt, px + rx, py + CELL_SIZE * 0.46, CELL_SIZE * 1.12);
+      } else {
+        drawWalkFrame(ctx, ART.monTier4Walk || ART.monWalk, frame, px,
+                      py + CELL_SIZE * 0.46 + bob, CELL_SIZE * 1.12, z.gait.face);
+      }
+    } else if (tier === 3) {
       if (hurt && (ART.monTier3 || ART.hurt)) {
         const rx = Math.sign(px - (player.displayX * CELL_SIZE + CELL_SIZE / 2)) * 1.6;
         drawSprite(ctx, ART.monTier3 || ART.hurt, px + rx, py + CELL_SIZE * 0.46, CELL_SIZE * 1.12);
@@ -7364,7 +7773,7 @@ function attackZombie() {
   if (!target) {
     // Swing at empty air in whichever way she is facing
     leahAttack = { frames: 0, dirX: leahFacing.dx, dirY: leahFacing.dy, hit: false };
-    sfxClick();
+    sfxSwingMiss();
     return;
   }
   
@@ -7446,6 +7855,8 @@ function movePlayer(dx, dy) {
     enterBossArena();
     return;
   }
+
+  sunPuzzleStep(newX, newY);
 
   // Pick anything up that is standing on this tile
   const pi = pickups.findIndex(u => u.x === newX && u.y === newY);
@@ -7690,7 +8101,8 @@ function applyLevelBackdrop() {
   document.body.style.backgroundImage =
     "linear-gradient(rgba(10,0,25,0.72), rgba(10,0,25,0.82)), url('" +
     ({ 1:'art-cave.jpg', 2:'art-cave2.jpg', 3:'art-cave3.jpg', 4:'art-cave4.jpg', 5:'art-cave3.jpg',
-       6:'art-cave4.jpg', 7:'art-cave5.jpg', 8:'art-cave5.jpg', 9:'art-cave5.jpg' }[currentLevel] || 'art-cave.jpg') + "')";
+       6:'art-cave4.jpg', 7:'art-cave5.jpg', 8:'art-cave5.jpg', 9:'art-cave5.jpg',
+       10:'art-egypt-bg.jpg', 11:'art-egypt-bg.jpg', 12:'art-egypt-bg.jpg' }[currentLevel] || 'art-cave.jpg') + "')";
 }
 
 function showEscapeMessage() {
@@ -7702,7 +8114,7 @@ function startEscape() {
   sfxClick();
   document.getElementById('escapeModal').classList.remove('active');
   gameState = 'escape';
-  escapeTimeLeft = 300;
+  escapeTimeLeft = escapeSeconds();
   
   // Switch to exciting escape music
   startEscapeBGM();
@@ -7759,8 +8171,8 @@ function winGame() {
     const th = (currentLang || 'en') === 'th';
     const secs = Math.round((Date.now() - runStartTime) / 1000);
     infoEl.innerHTML = th
-      ? `เก็บครบ ✔ &nbsp;|&nbsp; ไม่โดนมอน ${st[1] ? '✔' : '✘'} &nbsp;|&nbsp; ภายใน ${PAR_SECONDS[currentLevel]}s ${st[2] ? '✔' : '✘'} (ใช้ ${secs}s)`
-      : `All collected ✔ &nbsp;|&nbsp; No hits ${st[1] ? '✔' : '✘'} &nbsp;|&nbsp; Under ${PAR_SECONDS[currentLevel]}s ${st[2] ? '✔' : '✘'} (${secs}s)`;
+      ? `เก็บครบ ✔ &nbsp;|&nbsp; โดนมอนไม่เกิน ${HITS_ALLOWED} ครั้ง ${st[1] ? '✔' : '✘'} (โดน ${runHits}) &nbsp;|&nbsp; ภายใน ${PAR_SECONDS[currentLevel]}s ${st[2] ? '✔' : '✘'} (ใช้ ${secs}s)`
+      : `All collected ✔ &nbsp;|&nbsp; At most ${HITS_ALLOWED} hit ${st[1] ? '✔' : '✘'} (${runHits}) &nbsp;|&nbsp; Under ${PAR_SECONDS[currentLevel]}s ${st[2] ? '✔' : '✘'} (${secs}s)`;
   }
 
   // Update button text based on level
@@ -7790,10 +8202,13 @@ function loseGame(message) {
 // One short celebration clip per level. If a file is missing or the browser
 // refuses to play it, the hand-drawn animation runs instead.
 const WIN_CLIPS = {
-  1: 'win1.mp4', 2: 'win2.mp4', 3: 'win3.mp4',
-  4: 'win4.mp4', 5: 'win5.mp4', 6: 'win6.mp4',
-  7: 'win7.mp4', 8: 'win8.mp4', 9: 'win9.mp4'
+  1: 'win1.mp4',  2: 'win2.mp4',  3: 'win3.mp4',
+  4: 'win4.mp4',  5: 'win5.mp4',  6: 'win6.mp4',
+  7: 'win7.mp4',  8: 'win8.mp4',  9: 'win9.mp4',
+  10: 'win10.mp4', 11: 'win11.mp4', 12: 'win12.mp4'
 };
+// Every level has its own clip now. Leave this empty: if a clip ever fails to
+// load, showWinScene falls through to the hand-drawn canvas celebration.
 // Every level has its own clip now. Leave this empty: if a clip ever fails to
 // load, showWinScene falls through to the hand-drawn canvas celebration.
 const WIN_STILLS = {};
@@ -9396,8 +9811,10 @@ function routeToMonster(fromX, fromY, maxSteps) {
 }
 
 let dadCastUntil = 0;   // show the casting pose until this moment
-const AUTO_ORB_COOLDOWN_MS = 6000;  // he only steps in now and then on his own
-const AUTO_ORB_RANGE = 4;           // and only when something is genuinely close
+// Playing alone means nobody is driving Daddy, so he helps far more readily.
+// In co-op the second player is doing this, and his automatic shots are off.
+const AUTO_ORB_COOLDOWN_MS = 2200;  // was 6000
+const AUTO_ORB_RANGE = 6;           // was 4, now the same reach as a manual shot
 let lastAutoOrb = 0;
 
 function fireDadOrb(force) {
@@ -9850,7 +10267,10 @@ const BOOK_ROWS = [
   { lv: 6, icon: '👑', th: 'หินสุริยะ (ลึกสุด)', en: 'Sunstones (deepest)', rth: 'มงกุฎเจ้าถ้ำ', ren: "Cave King's Crown" },
   { lv: 7, icon: '💎', th: 'อัญมณีโถงร้าง',  en: 'Lost Hall Gems',  rth: 'ดาวประกายพรึก', ren: 'Great Star' },
   { lv: 8, icon: '⭐', th: 'ดาวโถงร้าง',     en: 'Lost Hall Stars', rth: 'ถ้วยรางวัลคริสตัล', ren: 'Crystal Trophy' },
-  { lv: 9, icon: '🛡️', th: 'หินห้องผนึก',   en: 'Vault Stones',    rth: 'มงกุฎผู้พิทักษ์', ren: "Guardian's Crown" }
+  { lv: 9, icon: '🛡️', th: 'หินห้องผนึก',   en: 'Vault Stones',    rth: 'มงกุฎผู้พิทักษ์', ren: "Guardian's Crown" },
+  { lv: 10, icon: '🪲', th: 'สคารับเทอร์ควอยซ์', en: 'Turquoise Scarabs', rth: 'สร้อยสคารับ', ren: 'Scarab Amulet' },
+  { lv: 11, icon: '🪙', th: 'เหรียญทองฟาโรห์',  en: 'Pharaoh Coins',     rth: 'กุญแจอังค์ทองคำ', ren: 'Golden Ankh' },
+  { lv: 12, icon: '🏺', th: 'กุญแจอังค์',       en: 'Ankh Keys',         rth: 'มงกุฎฟาโรห์', ren: "Pharaoh's Crown" }
 ];
 function openBook() {
   sfxClick();
@@ -9960,7 +10380,7 @@ function restartGame() {
   gemsCollected = 0;
   currentQuestionIndex = -1;
   gameState = 'playing';
-  escapeTimeLeft = 300;
+  escapeTimeLeft = escapeSeconds();
   particles = [];
   helpCooldownTimer = 0;
   magicLightTimer = 0;
