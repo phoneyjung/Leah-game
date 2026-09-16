@@ -1662,7 +1662,10 @@ const TRACKS = { calm: 'bgm-calm.mp3', escape: 'bgm-escape.mp3', boss: 'bgm-boss
                  egypt: 'bgm-egypt.mp3', egyptBoss: 'bgm-egypt-boss.mp3' };
 const music = {};
 let musicTrack = null;       // 'calm' | 'escape' | null
-const MUSIC_BASE = 0.28;   // background score sits well under the effects
+// Every track is now mastered to the same loudness (-14.4 LUFS), which sits
+// about 1.4 dB below where the old mixed-level set averaged, so the base level
+// goes up by the same amount and the game sounds as it did before.
+const MUSIC_BASE = 0.33;   // background score sits well under the effects
 const SYNTH_BGM_BASE = 0.18;  // the fallback synth score uses its own gain node
 // Player-set music level, 0 = off .. 1 = full. Saved per device.
 let musicScale = 1;
