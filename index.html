@@ -1110,7 +1110,13 @@ const ART_FILES = {
   hazards4:   'art-hazards4.png',
   itemsEgypt: 'art-items-egypt.png',
   pillars:    'art-egypt-pillars.png',
-  fxSunbeam:  'art-fx-sunbeam.jpg'
+  fxSunbeam:  'art-fx-sunbeam.jpg',
+  // ---- Breakable blocks and the jigsaw ----
+  blockRock:    'art-block-rock.png',    // 3 frames: whole, cracked, breaking
+  blockGem:     'art-block-gem.png',     // same, the rarer violet one
+  jigsawPiece:  'art-jigsaw-piece.png',
+  jigsawArt:    'art-jigsaw.jpg',        // the finished family picture
+  fxBlockBreak: 'art-fx-blockbreak.jpg'  // 5 frames on black, drawn additively
 };
 const ITEM_INDEX = { gem: 0, cloth: 1, star: 2 };
 // Walk-cycle strips: one row of 4 frames each
@@ -1376,6 +1382,11 @@ const SFX_FILES = {
   slam:    'sfx-slam.mp3',
   rock:    'sfx-rock.mp3',
   swing:   'sfx-swing.mp3',   // swinging at empty air
+  crack:      'sfx-crack.mp3',
+  blockbreak: 'sfx-blockbreak.mp3',
+  gemblock:   'sfx-gemblock.mp3',
+  piece:      'sfx-piece.mp3',
+  complete:   'sfx-complete.mp3',
   crystal: 'sfx-crystal.mp3',
   bolt:    'sfx-bolt.mp3',
   warp:    'sfx-warp.mp3'
@@ -1383,7 +1394,7 @@ const SFX_FILES = {
 // Levels re-balanced after every recorded effect was normalised to the same
 // peak: the big moments (boss slam, crystal shattering) were sitting quieter
 // than ordinary hits, which read as anticlimactic.
-const SFX_VOL = { swing: 0.45, collect: 0.55, correct: 0.6, wrong: 0.5, magic: 0.5, hit: 0.55, win: 0.7, bolt: 0.65, warp: 0.6, slam: 0.8, rock: 0.5, crystal: 0.8, step: 0.22, slash: 0.6 };
+const SFX_VOL = { swing: 0.45, crack: 0.5, blockbreak: 0.6, gemblock: 0.6, piece: 0.6, complete: 0.7, collect: 0.55, correct: 0.6, wrong: 0.5, magic: 0.5, hit: 0.55, win: 0.7, bolt: 0.65, warp: 0.6, slam: 0.8, rock: 0.5, crystal: 0.8, step: 0.22, slash: 0.6 };
 const sfxPool = {};
 const SFX_VOICES = 3;
 
@@ -1425,6 +1436,37 @@ function playSfx(key, rate) {
 // Swinging at empty air. This used to play the UI click, which sounded like
 // pressing a button rather than swinging a sword. A band of noise swept up and
 // back down reads as air moving past a blade.
+// Chipping a block: a short bright knock, no boom.
+function sfxBlockCrack() {
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime;
+  playNoise(0.07, 0.30, 1800);
+  const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o.type = 'square';
+  o.frequency.setValueAtTime(320, t);
+  o.frequency.exponentialRampToValueAtTime(140, t + 0.09);
+  g.gain.setValueAtTime(0.16, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+  o.connect(g); g.connect(sfxGain);
+  o.start(t); o.stop(t + 0.14);
+}
+
+// The block gives way. The violet one rings instead of thudding.
+function sfxBlockBreak(gem) {
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime;
+  playNoise(0.16, 0.34, gem ? 2600 : 1100);
+  setTimeout(() => playNoise(0.30, 0.15, 420), 60);
+  const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o.type = gem ? 'triangle' : 'sine';
+  o.frequency.setValueAtTime(gem ? 880 : 150, t);
+  o.frequency.exponentialRampToValueAtTime(gem ? 1760 : 55, t + (gem ? 0.30 : 0.22));
+  g.gain.setValueAtTime(gem ? 0.20 : 0.34, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.34);
+  o.connect(g); g.connect(sfxGain);
+  o.start(t); o.stop(t + 0.36);
+}
+
 function sfxSwingMiss() {
   if (playSfx('swing', 0.92 + Math.random() * 0.16)) return;
   if (!audioCtx) return;
@@ -3916,6 +3958,214 @@ function drawSunPuzzle() {
   }
 }
 
+// ==================== BREAKABLE BLOCKS AND THE JIGSAW ====================
+// The blocks stay value 1 in the maze grid, so every existing rule about walls
+// still applies to them: nobody walks through, monsters cannot path through,
+// sight is blocked. They only differ in how they are drawn and in the fact that
+// a sword swing can remove them. That keeps the change out of the maze logic.
+let breakBlocks = {};        // 'x,y' -> { kind: 'rock' | 'gem', hits: 0, shake: 0 }
+let blockBursts = [];        // { x, y, t } for the shatter effect
+const BLOCK_HITS = 2;        // both kinds take two swings
+
+const JIG_COLS = 4, JIG_ROWS = 3, JIG_TOTAL = JIG_COLS * JIG_ROWS;
+function jigKey()   { return 'leahCaveJigsaw_' + currentSlot; }
+function jigOrderKey() { return 'leahCaveJigOrder_' + currentSlot; }
+
+// Which board square each level hands over. Shuffled once per save so the
+// picture fills in unpredictably instead of left to right.
+function jigsawOrder() {
+  try {
+    const raw = localStorage.getItem(jigOrderKey());
+    if (raw) {
+      const a = JSON.parse(raw);
+      if (Array.isArray(a) && a.length === JIG_TOTAL) return a;
+    }
+  } catch (e) {}
+  const a = [...Array(JIG_TOTAL).keys()];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  try { localStorage.setItem(jigOrderKey(), JSON.stringify(a)); } catch (e) {}
+  return a;
+}
+function loadJigsaw() {
+  try { const a = JSON.parse(localStorage.getItem(jigKey())); return Array.isArray(a) ? a : []; }
+  catch (e) { return []; }
+}
+function saveJigsaw(levels) {
+  try { localStorage.setItem(jigKey(), JSON.stringify(levels)); } catch (e) {}
+}
+function hasJigsawFor(level) { return loadJigsaw().includes(level); }
+function awardJigsaw(level) {
+  const got = loadJigsaw();
+  if (got.includes(level)) return false;
+  got.push(level);
+  saveJigsaw(got);
+  return true;
+}
+
+// Interior wall cells that touch a corridor. Breaking one opens a shortcut,
+// which is the point: never the outer border, so the maze can never leak open.
+function placeBreakBlocks() {
+  breakBlocks = {};
+  blockBursts = [];
+  if (inBossFight) return;
+  const spots = [];
+  for (let y = 2; y < ROWS - 2; y++) {
+    for (let x = 2; x < COLS - 2; x++) {
+      if (maze[y][x] !== 1) continue;
+      let open = 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const c = maze[y + dy] && maze[y + dy][x + dx];
+        if (c === 0 || c === 2 || c === 3) open++;
+      }
+      // touching a corridor so she can see and reach it, but not a lone pillar
+      if (open >= 1 && open <= 3) spots.push({ x, y });
+    }
+  }
+  for (let i = spots.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [spots[i], spots[j]] = [spots[j], spots[i]];
+  }
+  const far = spots.filter(p => Math.abs(p.x - 1) + Math.abs(p.y - 1) > 6);
+  const pool = far.length >= 6 ? far : spots;
+
+  const rocks = Math.min(4, Math.max(2, Math.round(COLS * ROWS / 700)));
+  let placed = 0;
+  for (const p of pool) {
+    if (placed >= rocks) break;
+    breakBlocks[p.x + ',' + p.y] = { kind: 'rock', hits: 0, shake: 0 };
+    placed++;
+  }
+  // exactly one jigsaw block per level, and only while that piece is missing
+  if (!hasJigsawFor(currentLevel)) {
+    const gem = pool.find(p => !breakBlocks[p.x + ',' + p.y]);
+    if (gem) breakBlocks[gem.x + ',' + gem.y] = { kind: 'gem', hits: 0, shake: 0 };
+  }
+}
+
+// A swing landed on a block. Returns true if it was a block, so the attack
+// code knows not to treat the swing as a miss.
+function hitBreakBlock(x, y) {
+  const k = x + ',' + y;
+  const b = breakBlocks[k];
+  if (!b) return false;
+  b.hits++;
+  b.shake = 8;
+  addShake(4);
+  const th = currentLang === 'th';
+  if (b.hits < BLOCK_HITS) {
+    if (!playSfx('crack')) sfxBlockCrack();
+    return true;
+  }
+  // broken
+  delete breakBlocks[k];
+  maze[y][x] = 0;
+  blockBursts.push({ x, y, t: 0 });
+  addShake(8);
+  if (b.kind === 'gem') {
+    if (!playSfx('gemblock')) sfxBlockBreak(true);
+    if (awardJigsaw(currentLevel)) {
+      const got = loadJigsaw().length;
+      showToast(th ? `🧩 ได้ชิ้นจิ๊กซอว์! เก็บแล้ว ${got}/${JIG_TOTAL} ชิ้น`
+                   : `🧩 Jigsaw piece! ${got}/${JIG_TOTAL} collected`);
+      if (got >= JIG_TOTAL) {
+        setTimeout(() => showToast(th ? '🎉 ต่อจิ๊กซอว์ครบแล้ว! เปิดดูในสมุด 📖'
+                                      : '🎉 The picture is complete! Open the book 📖'), 1400);
+      }
+      if (!playSfx('piece')) sfxGemFound();
+    }
+  } else {
+    if (!playSfx('blockbreak')) sfxBlockBreak(false);
+    // she gets either more light or a way out of trouble
+    const kind = Math.random() < 0.5 ? 'lantern' : 'warp';
+    pickups.push({ x, y, kind });
+    showToast(th ? '💥 บล็อกแตก! มีของอยู่ข้างใน' : '💥 The block breaks open!');
+  }
+  return true;
+}
+
+function drawBreakBlock(px, py, b) {
+  const sh = b.shake > 0 ? Math.sin(b.shake * 1.8) * b.shake * 0.35 : 0;
+  if (b.shake > 0) b.shake -= 0.6;
+  const art = b.kind === 'gem' ? ART.blockGem : ART.blockRock;
+  ctx.save();
+  ctx.translate(sh, 0);
+  if (art) {
+    const fw = art.width / 3;
+    const f = Math.min(2, b.hits);
+    ctx.drawImage(art, f * fw, 0, fw, art.height, px, py, CELL_SIZE, CELL_SIZE);
+  } else {
+    // Fallback: no art file, so draw the block. Never a blank wall.
+    const pal = b.kind === 'gem'
+      ? ['#c78df5', '#9b5de5', '#4a2472', '#ffd98a', '✦']
+      : ['#b08a5c', '#8a6b45', '#4e3a25', '#ffc861', '◈'];
+    const g = ctx.createLinearGradient(px, py, px + CELL_SIZE, py + CELL_SIZE);
+    g.addColorStop(0, pal[0]); g.addColorStop(0.55, pal[1]); g.addColorStop(1, pal[2]);
+    ctx.fillStyle = g;
+    ctx.fillRect(px + 1, py + 1, CELL_SIZE - 2, CELL_SIZE - 2);
+    ctx.strokeStyle = pal[3];
+    ctx.lineWidth = Math.max(2, CELL_SIZE * 0.06);
+    ctx.strokeRect(px + CELL_SIZE * 0.14, py + CELL_SIZE * 0.14, CELL_SIZE * 0.72, CELL_SIZE * 0.72);
+    ctx.fillStyle = pal[3];
+    ctx.font = 'bold ' + Math.round(CELL_SIZE * 0.42) + 'px serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(pal[4], px + CELL_SIZE / 2, py + CELL_SIZE / 2 + 1);
+    if (b.hits > 0) {
+      ctx.strokeStyle = 'rgba(15,8,2,0.8)';
+      ctx.lineWidth = Math.max(1.6, CELL_SIZE * 0.045);
+      ctx.beginPath();
+      ctx.moveTo(px + CELL_SIZE * 0.5, py + CELL_SIZE * 0.5);
+      ctx.lineTo(px + CELL_SIZE * 0.22, py + CELL_SIZE * 0.18);
+      ctx.moveTo(px + CELL_SIZE * 0.5, py + CELL_SIZE * 0.5);
+      ctx.lineTo(px + CELL_SIZE * 0.82, py + CELL_SIZE * 0.34);
+      ctx.moveTo(px + CELL_SIZE * 0.5, py + CELL_SIZE * 0.5);
+      ctx.lineTo(px + CELL_SIZE * 0.4, py + CELL_SIZE * 0.86);
+      ctx.stroke();
+    }
+  }
+  // a small glow so it stands out from ordinary wall at a glance
+  const glow = ctx.createRadialGradient(px + CELL_SIZE / 2, py + CELL_SIZE / 2, 1,
+                                        px + CELL_SIZE / 2, py + CELL_SIZE / 2, CELL_SIZE * 0.8);
+  const tint = b.kind === 'gem' ? '190,120,255' : '255,200,97';
+  glow.addColorStop(0, `rgba(${tint},0.22)`);
+  glow.addColorStop(1, `rgba(${tint},0)`);
+  ctx.fillStyle = glow;
+  ctx.fillRect(px - CELL_SIZE * 0.3, py - CELL_SIZE * 0.3, CELL_SIZE * 1.6, CELL_SIZE * 1.6);
+  ctx.restore();
+}
+
+function drawBlockBursts() {
+  for (let i = blockBursts.length - 1; i >= 0; i--) {
+    const b = blockBursts[i];
+    b.t++;
+    if (b.t > 30) { blockBursts.splice(i, 1); continue; }
+    const px = b.x * CELL_SIZE + CELL_SIZE / 2;
+    const py = b.y * CELL_SIZE + CELL_SIZE / 2;
+    const k = b.t / 30;
+    if (ART.fxBlockBreak) {
+      const fw = ART.fxBlockBreak.width / 5;
+      const f = Math.min(4, Math.floor(k * 5));
+      const sz = CELL_SIZE * 2.4;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 1 - k * 0.5;
+      ctx.drawImage(ART.fxBlockBreak, f * fw, 0, fw, ART.fxBlockBreak.height,
+                    px - sz / 2, py - sz / 2, sz, sz);
+      ctx.restore();
+    } else {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, 1 - k);
+      ctx.fillStyle = 'rgba(150,132,108,0.5)';
+      ctx.beginPath();
+      ctx.arc(px, py, CELL_SIZE * (0.3 + k * 0.7), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+}
+
 function bossArmorBounce() {
   boss.bounces++;
   addShake(5);
@@ -4382,7 +4632,14 @@ function collectPickup(u) {
   sfxGemFound();
   addShake(3);
   if (u.kind === 'lantern') {
-    buffLantern = BUFF_SECONDS;
+    if (lanternStacks.length >= LANTERN_MAX) {
+      // already at full brightness, so top up the stack closest to running out
+      lanternStacks.sort((a, b) => a - b);
+      lanternStacks[0] = BUFF_SECONDS;
+    } else {
+      lanternStacks.push(BUFF_SECONDS);
+    }
+    buffLantern = Math.max(...lanternStacks);
     showToast(th ? '🏮 โคมไฟสว่างขึ้น 30 วินาที!' : '🏮 Brighter lantern for 30s!');
   } else if (u.kind === 'boots') {
     buffSpeed = BUFF_SECONDS;
@@ -4406,7 +4663,13 @@ function collectPickup(u) {
 
 // === POWER-UPS, STREAKS, SECRETS, BOSS ===
 let pickups = [];            // {x,y,kind}
-let buffLantern = 0;         // seconds of brighter light left
+// Lantern stacks. Each pickup adds its own countdown rather than resetting one
+// shared timer, so the light fades a step at a time instead of snapping dark.
+let lanternStacks = [];      // seconds left on each stack, newest last
+const LANTERN_MAX = 4;
+const LANTERN_STEP = 1.3;    // cells of extra sight per stack
+function lanternBonusNow() { return Math.min(LANTERN_MAX, lanternStacks.length) * LANTERN_STEP; }
+let buffLantern = 0;         // seconds of brighter light left (kept for the HUD)
 let buffSpeed = 0;           // seconds of faster steps left
 let buffShield = 0;          // number of monster hits absorbed
 let answerStreak = 0;        // correct answers in a row
@@ -4427,7 +4690,7 @@ const BUFF_SECONDS = 30;
 
 function resetRunExtras() {
   pickups = []; secretCells = [];
-  buffLantern = 0; buffSpeed = 0; buffShield = 0;
+  buffLantern = 0; lanternStacks = []; buffSpeed = 0; buffShield = 0;
   answerStreak = 0; wrongStreak = 0; mercy = 0; rapidUntil = 0;
   monShots = [];
   boss = null; bossGate = null; bossDefeated = false;
@@ -4436,7 +4699,10 @@ function resetRunExtras() {
 // Tick the timed buffs once a second
 setInterval(() => {
   if (gameState !== 'playing' && gameState !== 'escape') return;
-  if (buffLantern > 0) buffLantern--;
+  for (let i = lanternStacks.length - 1; i >= 0; i--) {
+    if (--lanternStacks[i] <= 0) lanternStacks.splice(i, 1);
+  }
+  buffLantern = lanternStacks.length ? Math.max(...lanternStacks) : 0;
   if (buffSpeed > 0) buffSpeed--;
   if (typeof updateUI === 'function') updateUI();
 }, 1000);
@@ -4678,6 +4944,7 @@ function generateMaze() {
   // used to be set once at start-up and never again, so every level after the
   // first kept level 1's corner and the way out sat a few steps from the start.
   exitPos = { x: COLS - 2, y: ROWS - 2 };
+  placeBreakBlocks();
   
   const shuffled = [];
   activeQuestions = [];
@@ -5591,7 +5858,9 @@ function draw() {
         ctx.rotate(rot);
         ctx.drawImage(tex, -CELL_SIZE / 2 - 0.5, -CELL_SIZE / 2 - 0.5, CELL_SIZE + 1, CELL_SIZE + 1);
         ctx.restore();
-        if (cell === 1) {
+        if (cell === 1 && breakBlocks[x + ',' + y]) {
+          drawBreakBlock(px, py, breakBlocks[x + ',' + y]);
+        } else if (cell === 1) {
           // Walls sit deep in shadow so the corridors read clearly
           ctx.fillStyle = 'rgba(4, 2, 0, 0.60)';
           ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
@@ -5604,6 +5873,8 @@ function draw() {
           ctx.fillStyle = 'rgba(255, 180, 90, 0.10)';
           ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
         }
+      } else if (cell === 1 && breakBlocks[x + ',' + y]) {
+        drawBreakBlock(px, py, breakBlocks[x + ',' + y]);
       } else if (cell === 1) {
         // Rocky cave wall with realistic stone texture
         // Base layer - dark stone
@@ -5754,6 +6025,7 @@ function draw() {
   if (!frozen) { updateDadOrbs(); updateBoss(); updateMonShots(); updateArenaHazards(); updateSunPuzzle(); }
   drawArenaHazards();
   drawSunPuzzle();
+  drawBlockBursts();
   drawMonShots();
   updateWarpAnim(16);
   drawWarpBeam();
@@ -7565,7 +7837,7 @@ function drawFogOfWar() {
     ctx.fillRect(0, 0, VIEW_WIDTH, VIEW_HEIGHT);
     return;
   }
-  const lanternBonus = buffLantern > 0 ? 2.6 : 0;
+  const lanternBonus = lanternBonusNow();
   const effectiveRadius = Math.max(VISION_RADIUS + lanternBonus, magicRadius);
   // Scale radius by zoom too (so cells appear correctly sized)
   const radiusPx = CELL_SIZE * effectiveRadius * cameraZoom;
@@ -7759,6 +8031,25 @@ function attackZombie() {
     if (!playSfx('slash')) sfxZombieHit();
     hitBoss();
     return;
+  }
+
+  // A breakable block right in front takes priority over anything further away
+  {
+    const fx = player.x + leahFacing.dx, fy = player.y + leahFacing.dy;
+    if (breakBlocks[fx + ',' + fy]) {
+      leahAttack = { frames: 0, dirX: leahFacing.dx, dirY: leahFacing.dy, hit: true };
+      hitBreakBlock(fx, fy);
+      return;
+    }
+    // and if she is not facing one, any block she is standing next to will do
+    for (const [dx, dy] of CARD) {
+      const bx = player.x + dx, by = player.y + dy;
+      if (breakBlocks[bx + ',' + by]) {
+        leahAttack = { frames: 0, dirX: dx, dirY: dy, hit: true };
+        hitBreakBlock(bx, by);
+        return;
+      }
+    }
   }
 
   // Look one and two cells along each cardinal direction
@@ -8026,7 +8317,10 @@ function updateUI() {
   const bb = document.getElementById('buffBar');
   if (bb) {
     let out = '';
-    if (buffLantern > 0) out += `🏮${buffLantern} `;
+    if (lanternStacks.length > 0) {
+      const soonest = Math.min(...lanternStacks);
+      out += `🏮${lanternStacks.length > 1 ? '×' + lanternStacks.length + ' ' : ''}${soonest} `;
+    }
     if (buffSpeed > 0) out += `👟${buffSpeed} `;
     if (buffShield > 0) out += `🛡️${buffShield} `;
     if (Date.now() < rapidUntil) out += '🔥';
@@ -10302,7 +10596,62 @@ function openBook() {
       '</div>';
     body.appendChild(row);
   });
+  body.appendChild(buildJigsawBoard(th));
   document.getElementById('bookModal').classList.add('active');
+}
+
+// The jigsaw board: one square per level, revealed in the shuffled order.
+function buildJigsawBoard(th) {
+  const got = loadJigsaw();
+  const order = jigsawOrder();
+  const opened = new Set();
+  for (const lv of got) {
+    const idx = order[lv - 1];
+    if (idx !== undefined) opened.add(idx);
+  }
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'margin-top:6px; text-align:center;';
+  const done = got.length >= JIG_TOTAL;
+  wrap.innerHTML =
+    '<div style="font-weight:bold; color:#c2185b; margin-bottom:6px;">' +
+      (th ? '🧩 จิ๊กซอว์ครอบครัว ' : '🧩 Family jigsaw ') + got.length + '/' + JIG_TOTAL +
+      (done ? (th ? ' — ครบแล้ว!' : ' — complete!') : '') + '</div>' +
+    '<div style="font-size:0.78em; color:#888; margin-bottom:8px;">' +
+      (th ? 'ทุบบล็อกสีม่วงในแต่ละด่านเพื่อเก็บชิ้นส่วน ด่านละ 1 ชิ้น'
+          : 'Break the violet block in each level to win a piece, one per level') + '</div>';
+
+  const board = document.createElement('div');
+  board.style.cssText =
+    'position:relative; width:100%; max-width:420px; margin:0 auto; aspect-ratio:16/9;' +
+    'border:3px solid #c2185b; border-radius:12px; overflow:hidden; background:#1b1026;';
+  const img = document.createElement('img');
+  img.src = 'art-jigsaw.jpg';
+  img.alt = '';
+  img.style.cssText = 'position:absolute; inset:0; width:100%; height:100%; object-fit:cover;';
+  // If the picture file is missing the squares still work, just over a plain panel
+  img.onerror = () => { img.style.display = 'none'; };
+  board.appendChild(img);
+
+  const grid = document.createElement('div');
+  grid.style.cssText =
+    'position:absolute; inset:0; display:grid; grid-template-columns:repeat(' + JIG_COLS + ',1fr);' +
+    'grid-template-rows:repeat(' + JIG_ROWS + ',1fr);';
+  for (let i = 0; i < JIG_TOTAL; i++) {
+    const cellEl = document.createElement('div');
+    if (opened.has(i)) {
+      cellEl.style.cssText = 'border:1px solid rgba(255,230,180,0.45);';
+    } else {
+      cellEl.style.cssText =
+        'background:rgba(12,7,18,0.94); border:1px solid rgba(255,200,97,0.18);' +
+        'display:flex; align-items:center; justify-content:center;' +
+        'color:rgba(255,200,97,0.35); font-weight:bold; font-size:1.1em;';
+      cellEl.textContent = '?';
+    }
+    grid.appendChild(cellEl);
+  }
+  board.appendChild(grid);
+  wrap.appendChild(board);
+  return wrap;
 }
 function closeBook() { sfxClick(); document.getElementById('bookModal').classList.remove('active'); }
 

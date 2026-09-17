@@ -3,7 +3,7 @@
 // This means a fresh upload to GitHub Pages is ALWAYS picked up when online,
 // while the game still runs with no signal at all.
 
-const CACHE = 'leah-cave-v2';
+const CACHE = 'leah-cave-v7';
 const PRECACHE = [
   './',
   './index.html',
@@ -44,6 +44,7 @@ const PRECACHE = [
   './art-mon2-hurt.png',
   './sfx-step.mp3',
   './sfx-slash.mp3',
+  './sfx-swing.mp3',
   './art-boss-floor.jpg',
   './art-boss-wall.jpg',
   './art-boss-gate.png',
@@ -88,6 +89,40 @@ const PRECACHE = [
   './win7.mp4',
   './win8.mp4',
   './win9.mp4',
+  './win10.mp4',
+  './win11.mp4',
+  './win12.mp4',
+  // ---- Egyptian labyrinth (levels 10-12) ----
+  './art-egypt-floor.jpg',
+  './art-egypt-wall.jpg',
+  './art-egypt-bg.jpg',
+  './art-egypt-exit.png',
+  './art-mon4-walk.png',
+  './art-mon4-hurt.png',
+  './art-boss4-walk.png',
+  './art-boss4-sleep.png',
+  './art-egypt-pillars.png',
+  './art-hazards4.png',
+  './art-items-egypt.png',
+  './art-fx-sunbeam.jpg',
+  './art-block-rock.png',
+  './art-block-gem.png',
+  './art-jigsaw-piece.png',
+  './art-jigsaw.jpg',
+  './art-fx-blockbreak.jpg',
+  './sfx-crack.mp3',
+  './sfx-blockbreak.mp3',
+  './sfx-gemblock.mp3',
+  './sfx-piece.mp3',
+  './sfx-complete.mp3',
+  './bgm-egypt.mp3',
+  './bgm-egypt-boss.mp3',
+  './sfx-stonedoor.mp3',
+  './sfx-glyph.mp3',
+  './sfx-sand.mp3',
+  './sfx-dart.mp3',
+  './sfx-scarab.mp3',
+  './sfx-gold.mp3',
   './icon-192.png',
   './icon-512.png'
 ];
