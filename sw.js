@@ -3,7 +3,7 @@
 // This means a fresh upload to GitHub Pages is ALWAYS picked up when online,
 // while the game still runs with no signal at all.
 
-const CACHE = 'leah-cave-v7';
+const CACHE = 'leah-cave-v8';
 const PRECACHE = [
   './',
   './index.html',

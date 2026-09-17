@@ -814,6 +814,7 @@
     <button id="bookBtn" onclick="openBook()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="Collection">📖</button>
     <button id="coopBtn" onclick="toggleCoop()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="2 players">👥</button>
     <button id="keysBtn" onclick="openKeys()" style="display:none; background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="Keyboard controls">⌨️</button>
+    <button id="jigsawBtn" onclick="openJigsaw()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="Family jigsaw">🧩</button>
     <button id="padsBtn" onclick="togglePads()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="Show or hide the on-screen pad">🎮</button>
     <button id="swapPadBtn" onclick="toggleSwapPads()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="Swap the two pads">⇄</button>
     <button id="musicBtn" onclick="openMusic()" style="background:none; border:2px solid #c2185b; border-radius:50%; width:36px; height:36px; font-size:1em; cursor:pointer;" title="Music volume">🎵</button>
@@ -963,7 +964,7 @@
     <div id="winStars" style="font-size:2em; letter-spacing:6px; margin:6px 0;"></div>
     <div id="winStarInfo" style="font-size:0.8em; color:#777; margin-bottom:6px;"></div>
     <p id="winMessage" style="font-size: 1.2em; color: #c2185b; font-weight: bold;"></p>
-    <button class="continue-btn" id="winPlayAgain" onclick="nextLevel()">▶️ Next Level</button>
+    <button class="continue-btn" id="winPlayAgain" onclick="winContinue()">▶️ Next Level</button>
   </div>
 </div>
 
@@ -1001,6 +1002,15 @@
   <div class="modal-content" style="max-width:560px;">
     <h2 id="slotTitle">👤 ใครจะเล่น</h2>
     <div id="slotBody" style="text-align:left;"></div>
+  </div>
+</div>
+
+<!-- Jigsaw board -->
+<div class="modal" id="jigsawModal">
+  <div class="modal-content" style="max-width:560px;">
+    <h2 id="jigsawTitle">🧩 จิ๊กซอว์ครอบครัว</h2>
+    <div id="jigsawBody"></div>
+    <button class="continue-btn" id="jigsawClose" onclick="closeJigsaw()">ปิด</button>
   </div>
 </div>
 
@@ -3965,6 +3975,7 @@ function drawSunPuzzle() {
 // a sword swing can remove them. That keeps the change out of the maze logic.
 let breakBlocks = {};        // 'x,y' -> { kind: 'rock' | 'gem', hits: 0, shake: 0 }
 let blockBursts = [];        // { x, y, t } for the shatter effect
+let jigsawJustGot = null;    // board square won this level, shown after the win clip
 const BLOCK_HITS = 2;        // both kinds take two swings
 
 const JIG_COLS = 4, JIG_ROWS = 3, JIG_TOTAL = JIG_COLS * JIG_ROWS;
@@ -4010,6 +4021,7 @@ function awardJigsaw(level) {
 function placeBreakBlocks() {
   breakBlocks = {};
   blockBursts = [];
+  jigsawJustGot = null;
   if (inBossFight) return;
   const spots = [];
   for (let y = 2; y < ROWS - 2; y++) {
@@ -4068,6 +4080,7 @@ function hitBreakBlock(x, y) {
     if (!playSfx('gemblock')) sfxBlockBreak(true);
     if (awardJigsaw(currentLevel)) {
       const got = loadJigsaw().length;
+      jigsawJustGot = jigsawOrder()[currentLevel - 1];
       showToast(th ? `🧩 ได้ชิ้นจิ๊กซอว์! เก็บแล้ว ${got}/${JIG_TOTAL} ชิ้น`
                    : `🧩 Jigsaw piece! ${got}/${JIG_TOTAL} collected`);
       if (got >= JIG_TOTAL) {
@@ -8379,6 +8392,20 @@ function closeIntro() {
 }
 
 // Advance to next level after winning
+// Pressing the button on the win screen. If a piece was won this level the
+// board is shown first, and moving on happens when that screen is closed.
+function winContinue() {
+  if (jigsawJustGot !== null) {
+    const idx = jigsawJustGot;
+    jigsawJustGot = null;
+    stopWinScene();
+    document.getElementById('winModal').classList.remove('active');
+    openJigsaw(idx, true);
+    return;
+  }
+  nextLevel();
+}
+
 function nextLevel() {
   sfxClick();
   stopWinScene();
@@ -10596,12 +10623,14 @@ function openBook() {
       '</div>';
     body.appendChild(row);
   });
-  body.appendChild(buildJigsawBoard(th));
+  body.appendChild(buildJigsawBoard(th, {}));
   document.getElementById('bookModal').classList.add('active');
 }
 
 // The jigsaw board: one square per level, revealed in the shuffled order.
-function buildJigsawBoard(th) {
+// opts.highlight marks the square just won so it is obvious what changed.
+function buildJigsawBoard(th, opts) {
+  opts = opts || {};
   const got = loadJigsaw();
   const order = jigsawOrder();
   const opened = new Set();
@@ -10622,8 +10651,8 @@ function buildJigsawBoard(th) {
 
   const board = document.createElement('div');
   board.style.cssText =
-    'position:relative; width:100%; max-width:420px; margin:0 auto; aspect-ratio:16/9;' +
-    'border:3px solid #c2185b; border-radius:12px; overflow:hidden; background:#1b1026;';
+    'position:relative; width:100%; max-width:' + (opts.big ? 520 : 420) + 'px; margin:0 auto;' +
+    'aspect-ratio:16/9; border:3px solid #c2185b; border-radius:12px; overflow:hidden; background:#1b1026;';
   const img = document.createElement('img');
   img.src = 'art-jigsaw.jpg';
   img.alt = '';
@@ -10639,7 +10668,11 @@ function buildJigsawBoard(th) {
   for (let i = 0; i < JIG_TOTAL; i++) {
     const cellEl = document.createElement('div');
     if (opened.has(i)) {
-      cellEl.style.cssText = 'border:1px solid rgba(255,230,180,0.45);';
+      const isNew = opts.highlight === i;
+      cellEl.style.cssText = isNew
+        ? 'border:3px solid #ffd54f; box-shadow:0 0 14px rgba(255,213,79,0.9) inset;' +
+          ' animation:popIn 0.5s ease;'
+        : 'border:1px solid rgba(255,230,180,0.45);';
     } else {
       cellEl.style.cssText =
         'background:rgba(12,7,18,0.94); border:1px solid rgba(255,200,97,0.18);' +
@@ -10654,6 +10687,38 @@ function buildJigsawBoard(th) {
   return wrap;
 }
 function closeBook() { sfxClick(); document.getElementById('bookModal').classList.remove('active'); }
+
+// ==================== JIGSAW SCREEN ====================
+let jigsawThenNext = false;   // opened straight after a win, so closing moves on
+
+function openJigsaw(highlight, thenNext) {
+  sfxClick();
+  const th = currentLang === 'th';
+  jigsawThenNext = !!thenNext;
+  const got = loadJigsaw().length;
+  document.getElementById('jigsawTitle').textContent =
+    th ? '🧩 จิ๊กซอว์ครอบครัว' : '🧩 Family jigsaw';
+  const body = document.getElementById('jigsawBody');
+  body.innerHTML = '';
+  if (highlight !== undefined && highlight !== null) {
+    const hit = document.createElement('div');
+    hit.style.cssText = 'color:#c2185b; font-weight:bold; margin-bottom:8px;';
+    hit.textContent = th ? '✨ ได้ชิ้นใหม่!' : '✨ New piece!';
+    body.appendChild(hit);
+  }
+  body.appendChild(buildJigsawBoard(th, { big: true, highlight: highlight }));
+  document.getElementById('jigsawClose').textContent = jigsawThenNext
+    ? (th ? '▶️ ไปด่านต่อไป' : '▶️ Next level')
+    : (th ? 'ปิด' : 'Close');
+  if (got >= JIG_TOTAL && !playSfx('complete')) sfxWin();
+  document.getElementById('jigsawModal').classList.add('active');
+}
+
+function closeJigsaw() {
+  document.getElementById('jigsawModal').classList.remove('active');
+  if (jigsawThenNext) { jigsawThenNext = false; nextLevel(); }
+  else sfxClick();
+}
 
 // ==================== LOADING SCREEN ====================
 (function splashLoader() {
