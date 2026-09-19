@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#12002b">
+<title>แต่งตัว — Leah's Cave Adventure</title>
+<link rel="manifest" href="./manifest.json">
+<style>
+  :root{
+    --night:#16103d; --deep:#0d0827; --plum:#3a2a72; --plum2:#4b3a8f;
+    --gold:#f6c453; --gold2:#ffe08a; --cream:#fff4dc; --ink:#2a1a55;
+    --girl:#ff8fb1; --boy:#6fc3ff;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;background:var(--deep);color:var(--cream);
+    font-family:'Comic Sans MS','Chalkboard SE',system-ui,-apple-system,sans-serif;overflow:hidden}
+  body{background:
+    radial-gradient(circle at 50% 22%,rgba(255,244,220,.10),transparent 38%),
+    radial-gradient(circle at 12% 80%,rgba(155,107,255,.18),transparent 45%),
+    linear-gradient(var(--night),var(--deep))}
+  #app{height:100%;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) minmax(0,1.15fr);
+    padding:env(safe-area-inset-top) 10px env(safe-area-inset-bottom);gap:8px;max-width:1100px;margin:0 auto}
+  header{display:flex;align-items:center;justify-content:space-between;padding:8px 4px 0}
+  h1{margin:0;font-size:22px;color:var(--gold2);text-shadow:0 2px 0 #8a5a00,0 4px 10px rgba(0,0,0,.5);letter-spacing:.5px}
+  header a{color:var(--cream);text-decoration:none;font-size:14px;background:rgba(255,255,255,.08);
+    padding:6px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.18)}
+
+  #stage{position:relative;display:flex;flex-direction:column;align-items:center;min-height:0}
+  #stage::before{content:"";position:absolute;left:50%;bottom:10px;transform:translateX(-50%);
+    width:min(70%,360px);height:26px;border-radius:50%;background:rgba(246,196,83,.25);filter:blur(10px)}
+  canvas{height:100%;max-width:100%;aspect-ratio:5/6;object-fit:contain;position:relative}
+  #stars i{position:absolute;width:3px;height:3px;border-radius:50%;background:#fff;opacity:.7}
+
+  #panel{display:flex;flex-direction:column;min-height:0;min-width:0}
+  #tabs{display:flex;gap:6px;overflow-x:auto;overflow-y:hidden;padding:4px 4px 0;scrollbar-width:none;flex:none}
+  #tabs::-webkit-scrollbar{display:none}
+  .tab{flex:none;width:58px;height:56px;border:2px solid #6a55b8;border-bottom:none;border-radius:14px 14px 0 0;
+    background:var(--plum);color:var(--cream);display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:2px;font:inherit;font-size:20px;cursor:pointer;opacity:.75;box-shadow:inset 0 2px 0 rgba(255,255,255,.12)}
+  .tab small{font-size:9px;line-height:1;white-space:nowrap;max-width:54px;overflow:hidden;text-overflow:ellipsis}
+  .tab.on{opacity:1;border-color:var(--gold);background:var(--plum2);height:60px;box-shadow:0 0 0 2px rgba(246,196,83,.25),inset 0 2px 0 rgba(255,255,255,.2)}
+
+  #box{flex:1;min-height:0;display:flex;flex-direction:column;background:var(--plum);
+    border:3px solid var(--gold);border-radius:18px;padding:8px;box-shadow:0 10px 30px rgba(0,0,0,.45),inset 0 0 0 2px #2b1e5c}
+  #pick{font-size:15px;padding:2px 6px 8px;color:var(--gold2);min-height:24px}
+  #grid{flex:1;min-height:0;overflow-y:auto;display:grid;grid-template-columns:repeat(5,1fr);gap:8px;align-content:start;padding:2px}
+  .opt{position:relative;aspect-ratio:1;border:3px solid #7c67cf;border-radius:14px;background:#5b4aa8;padding:0;cursor:pointer;overflow:hidden;font:inherit;color:var(--cream)}
+  .opt canvas{position:absolute;inset:0;width:100%;height:100%;display:none;background:#6b5bb8}
+  .opt canvas.ok{display:block}
+  .opt .ph{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:26px;line-height:1;background:#6b5bb8}
+  .opt .ph b{font-size:13px;margin-top:3px;background:rgba(0,0,0,.35);padding:1px 7px;border-radius:999px}
+  .opt.none .ph{font-size:30px;background:#4a3b8e}
+  .opt.on{border-color:var(--gold);box-shadow:0 0 0 3px rgba(246,196,83,.35),0 0 18px rgba(246,196,83,.5);transform:scale(1.03)}
+  .opt.on::after{content:"✓";position:absolute;right:4px;top:2px;color:var(--ink);background:var(--gold);border-radius:999px;width:18px;height:18px;font-size:12px;line-height:18px;text-align:center;font-weight:bold}
+  .opt.girl .ph{background:linear-gradient(#ffc1d6,var(--girl))}
+  .opt.boy .ph{background:linear-gradient(#bfe3ff,var(--boy))}
+
+  #actions{display:flex;gap:6px;justify-content:center;padding:6px 0 0;flex:none}
+  #actions button{flex:1;max-width:120px;border:none;border-radius:999px;padding:9px 6px;font:inherit;font-size:14px;cursor:pointer;color:var(--ink);background:var(--gold);box-shadow:0 3px 0 #b8891e}
+  #actions button:active{transform:translateY(2px);box-shadow:0 1px 0 #b8891e}
+  #actions .quiet{background:#e9dfff;box-shadow:0 3px 0 #8f7bd6}
+  #toast{position:fixed;left:50%;top:14%;transform:translate(-50%,-10px);background:var(--gold);color:var(--ink);padding:10px 18px;
+    border-radius:999px;font-size:16px;opacity:0;pointer-events:none;transition:.25s;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+  #toast.show{opacity:1;transform:translate(-50%,0)}
+  button:focus-visible,a:focus-visible{outline:3px solid var(--gold2);outline-offset:2px}
+
+  @media (min-aspect-ratio:1/1){
+    #app{grid-template-rows:auto minmax(0,1fr);grid-template-columns:minmax(0,7fr) minmax(0,10fr);grid-template-areas:"h h" "s p";column-gap:14px}
+    header{grid-area:h} #stage{grid-area:s} #panel{grid-area:p}
+    #grid{grid-template-columns:repeat(6,1fr)}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>✨ แต่งตัวตัวละคร</h1>
+    <a href="./index.html">← กลับไปเกม</a>
+  </header>
+
+  <section id="stage" aria-label="ตัวละคร">
+    <div id="stars"></div>
+    <canvas id="cv" width="1000" height="1200" aria-label="ภาพตัวละคร"></canvas>
+  </section>
+
+  <section id="panel">
+    <nav id="tabs" aria-label="หมวดแต่งตัว"></nav>
+    <div id="box">
+      <div id="pick"></div>
+      <div id="grid" role="listbox"></div>
+      <div id="actions">
+        <button id="btnRandom">🎲 สุ่ม</button>
+        <button id="btnReset" class="quiet">↩ เริ่มใหม่</button>
+        <button id="btnSave" class="quiet">💾 บันทึกรูป</button>
+        <button id="btnOk">✅ ตกลง</button>
+      </div>
+    </div>
+  </section>
+</div>
+<div id="toast" role="status"></div>
+
+<script>
+/* ============================================================
+   โครงสร้างแต่งตัว
+   - ผืนผ้าใบ 1000×1200  วางตัวละครแบบ chibi หัวโต
+   - ทุกหมวดมี "ช่อง" (slot) ของตัวเอง  รูปแต่ละชิ้นจะถูกตัดขอบใสออก
+     แล้วย่อ/ขยายให้พอดีช่อง  →  รูปที่เจนมาไม่ต้องกะตำแหน่งเป๊ะ
+   - ไฟล์รูป:  dress-<หมวด>-<เลข 01-10>.png   ตัวฐาน: dress-base-girl.png / dress-base-boy.png
+   - ไฟล์ไหนไม่มี → วาด placeholder แทน  เกมเล่นต่อได้
+   - เปิด ?debug=1 ท้าย URL เพื่อดูกรอบช่องทุกหมวด (ไว้ปรับตัวเลข slot ตอนรูปจริงมา)
+   ============================================================ */
+const W = 1000, H = 1200;
+const DEBUG = /[?&]debug=1/.test(location.search);
+const KEY = 'leahDress';
+
+// slot = [x, y, กว้าง, สูง]   anchor = top / center / bottom   twin = ช่องข้างที่สอง (วาดกลับด้าน)
+const CATS = [
+  { k:'gender', icon:'👧', name:'เพศ', opt:['หญิง','ชาย'] },
+  { k:'hair', icon:'💇', name:'ผม', color:'#8b5a2b', slot:[270,90,460,520], anchor:'top',
+    opt:['ผมบ๊อบสั้น','ผมเปียสองข้าง','ผมยาวหยักศก','ผมหางม้า','ผมมวยสูง','ผมสั้นซอย','ผมเปียเดี่ยวยาว','ผมหยิกฟู','ผมจุกสองข้าง','ผมเสยหลัง'] },
+  { k:'face', icon:'🙂', name:'โครงหน้า', color:'#f4b98f', slot:[330,150,340,340], anchor:'top',
+    opt:['หน้ากลม ผิวขาวอมชมพู','หน้ารูปไข่ ผิวน้ำผึ้ง','หน้ารูปหัวใจ มีกระ','หน้ากลม แก้มป่อง ผิวแทน','หน้าเรียว ผิวน้ำตาลเข้ม','หน้ากลม ผิวมะกอก มีลักยิ้ม','หน้ารูปไข่ แก้มแดง','หน้ากลม ผิวน้ำตาลเข้มเข้ม','หน้าเหลี่ยมมน ผิวขาวเหลือง','หน้ารูปหัวใจ ผิวทองแดง'] },
+  { k:'eyes', icon:'👀', name:'ตา', color:'#5aa9ff', slot:[365,285,270,95],
+    opt:['ตากลมโต สีน้ำตาล','ตาสีฟ้า ขนตายาว','ตาสีเขียวมรกต','ตาหยียิ้มหวาน','ตาน้ำตาลอ่อน มีประกายดาว','ตาสีม่วง ขนตางอน','ตาสีเทา คิ้วเข้ม','ตากลมโตสีดำ แววซน','ตาน้ำเงินเข้ม ขนตาทอง','ตาสีอำพัน ขยิบตา'] },
+  { k:'nose', icon:'👃', name:'จมูก', color:'#ffb3c1', slot:[470,365,60,45],
+    opt:['จมูกกระดุมเล็ก','จมูกจุดจิ๋ว','จมูกเชิดน่ารัก','จมูกกลมป้อม','จมูกแหลมแบบเอลฟ์','จมูกมีกระ','จมูกกว้างยิ้มแย้ม','จมูกรูปหัวใจ','จมูกแดงระเรื่อ','จมูกเล็กปลายงอน'] },
+  { k:'mouth', icon:'👄', name:'ปาก', color:'#ff6b81', slot:[440,410,120,55],
+    opt:['ยิ้มกว้าง','ยิ้มเห็นฟัน','ปากจู๋','อ้าปากตกใจ','ยิ้มฟันหลอ','แลบลิ้น','ยิ้มเขิน','ปากทาลิปชมพู','ยิ้มมุมปาก','หัวเราะ'] },
+  { k:'shirt', icon:'👕', name:'เสื้อ', color:'#9b6bff', slot:[300,495,400,260],
+    opt:['เสื้อเจ้าหญิงฟ้าน้ำแข็ง','เสื้อกั๊กเจ้าชายน้ำเงินทอง','เกราะอัศวินสีเงิน','เสื้อคลุมนักเวทม่วงลายดาว','เสื้อยืดขาวลายหมี','เสื้อโจรสลัดลายทาง','เสื้อนักเรียนฟ้าอมเทา','เสื้อนางฟ้าใบไม้','เสื้อคาวบอย','เสื้อกันหนาวแดงขนขาว'] },
+  { k:'gloves', icon:'🧤', name:'ถุงมือ', color:'#3ec7b4', slot:[235,710,110,110], twin:[655,710,110,110], none:true,
+    opt:['ถุงมือขาวยาว','ถุงมือหนังน้ำตาล','ถุงมือเกราะเหล็ก','ถุงมือนักเวทม่วง','ถุงมือขนชมพู','ถุงมือลายทางแดงขาว','ถุงมือเขียวใบไม้','ถุงมือทองประดับพลอย','ถุงมือน้ำเงินมีดาว','ถุงมืออุ้งเท้าหมี'] },
+  { k:'bottom', icon:'👖', name:'กางเกง/กระโปรง', short:'กางเกง', color:'#3b5bdb', slot:[355,735,290,330], anchor:'top',
+    opt:['กระโปรงบานเจ้าหญิงฟ้า','กระโปรงบัลเล่ต์ชมพู','กางเกงขายาวน้ำเงิน','กางเกงเกราะอัศวิน','กระโปรงยาวทองระยิบ','กางเกงโจรสลัดลายทาง','กระโปรงนางฟ้าใบไม้','กางเกงยีนส์','กางเกงคาวบอย','กระโปรงนักเรียนฟ้าอมเทา'] },
+  { k:'shoes', icon:'👟', name:'รองเท้า', color:'#a0522d', slot:[335,1060,140,115], twin:[525,1060,140,115], anchor:'bottom',
+    opt:['รองเท้าแก้ว','บูทหนังน้ำตาล','รองเท้าเกราะ','รองเท้านักเวทปลายงอน','ผ้าใบชมพู','บูทโจรสลัด','รองเท้านางฟ้าใบไม้','บูทคาวบอย','รองเท้าบัลเล่ต์','รองเท้านักเรียนดำ'] },
+  { k:'hat', icon:'🎩', name:'หมวก/ติดผม', color:'#f6c453', slot:[260,0,480,290], anchor:'bottom', none:true,
+    opt:['มงกุฎทอง','ทิอาร่าเงิน','หมวกนักเวทปลายแหลม','หมวกอัศวิน','โบว์ชมพูใหญ่','หมวกโจรสลัด','มาลัยดอกไม้','หมวกคาวบอย','ที่คาดผมหูหมี','หมวกไหมพรมปอมปอม'] },
+  { k:'glasses', icon:'👓', name:'แว่น', color:'#b0b8c8', slot:[350,275,300,110], none:true,
+    opt:['แว่นกลมทอง','แว่นกันแดดดำ','แว่นหัวใจชมพู','แว่นรูปดาว','แว่นกรอบฟ้า','แว่นดำน้ำ','หน้ากากฮีโร่','แว่นเนิร์ดหนา','แว่นตาเดียว','แว่นกรอบแดงใหญ่'] },
+  { k:'weapon', icon:'🪄', name:'อาวุธ', color:'#ff9f43', slot:[600,340,300,460], anchor:'bottom', none:true,
+    opt:['ไม้กายสิทธิ์ดาว','ดาบของเล่นทองพลอย','คทาลูกแก้ว','ธนูหัวใจ','โล่รูปหัวใจ','ค้อนยักษ์การ์ตูน','ปืนฉีดน้ำ','โคมไฟทองเหลือง','ร่มวิเศษ','หนังสือเวทเรืองแสง'] },
+  { k:'accessory', icon:'💎', name:'เครื่องประดับ', color:'#e056a0', slot:[400,480,200,110], none:true,
+    opt:['สร้อยเพชร','ผ้าพันคอแดง','สร้อยไข่มุก','เข็มกลัดดาว','สร้อยจี้หัวใจ','ปกขนฟู','โบว์ผูกคอ','สร้อยเปลือกหอย','เหรียญรางวัลทอง','ผ้าพันคอลายสก็อต'] },
+];
+// ปรับขนาด/ขยับรายชิ้น (s = สัดส่วนของช่อง, dx dy = เลื่อนเป็นสัดส่วนของช่อง)
+const TUNE = {
+  hat:     { 1:{s:.55}, 2:{s:.5}, 5:{s:.5,dx:.18}, 7:{s:.8}, 9:{s:.75} },
+  glasses: { 9:{s:.4,dx:.18} },
+  accessory:{ 4:{s:.45,dx:-.2}, 9:{s:.5} },
+};
+// ช่องของตัวฐาน: คอเสื้อคอเต่าเริ่มที่ y=450 ให้คางของหัว (ช่อง face จบที่ 490) ทับคอพอดี
+// วัดจากรูปฐานจริง (สูง 720): มืออยู่ราว (290,765)/(710,765) เท้าราว (405,1136)/(595,1136)
+const BASE_SLOT = [200,450,600,720];
+// ลำดับการวาด ล่าง → บน
+const ORDER = ['base','face','bottom','shoes','shirt','gloves','eyes','nose','mouth','hair','glasses','hat','accessory','weapon'];
+const DEFAULT = { gender:1, hair:2, face:1, eyes:1, nose:1, mouth:1, shirt:7, gloves:0, bottom:10, shoes:10, hat:5, glasses:0, weapon:8, accessory:0 };
+
+const pad = n => String(n).padStart(2,'0');
+const fileOf = (k,i) => k === 'base' ? `./dress-base-${i === 1 ? 'girl' : 'boy'}.png` : `./dress-${k}-${pad(i)}.png`;
+const byKey = Object.fromEntries(CATS.map(c => [c.k,c]));
+
+let state = load(), tab = 'hair';
+function load(){ try{ const s = JSON.parse(localStorage.getItem(KEY)); if (s && typeof s === 'object') return {...DEFAULT, ...s}; }catch(e){} return {...DEFAULT}; }
+function save(){ try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){} }
+
+/* ---------- โหลดรูป + ตัดขอบใส ---------- */
+const cache = {};
+function loadImg(src){
+  if (cache[src]) return cache[src];
+  return cache[src] = new Promise(res => {
+    const im = new Image();
+    im.onload = () => res({ im, box: trimBox(im) });
+    im.onerror = () => res(null);
+    im.src = src;
+  });
+}
+function trimBox(im){
+  const full = { x:0, y:0, w:im.width, h:im.height };
+  const s = Math.min(1, 256 / Math.max(im.width, im.height));
+  const w = Math.max(1, Math.round(im.width*s)), h = Math.max(1, Math.round(im.height*s));
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const x = c.getContext('2d'); x.drawImage(im, 0, 0, w, h);
+  let d; try{ d = x.getImageData(0,0,w,h).data; }catch(e){ return full; }
+  let x0=w, y0=h, x1=-1, y1=-1;
+  for (let j=0; j<h; j++) for (let i=0; i<w; i++) if (d[(j*w+i)*4+3] > 16){ if(i<x0)x0=i; if(i>x1)x1=i; if(j<y0)y0=j; if(j>y1)y1=j; }
+  if (x1 < 0) return full;
+  return { x:x0/s, y:y0/s, w:(x1-x0+1)/s, h:(y1-y0+1)/s };
+}
+
+/* ---------- วาด ---------- */
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+let renderId = 0;
+async function render(){
+  const id = ++renderId;
+  const layers = ORDER.map(k => {
+    const i = k === 'base' ? state.gender : state[k];
+    if (!i) return null;
+    return { k, i, cat: byKey[k] };
+  }).filter(Boolean);
+  const assets = await Promise.all(layers.map(l => loadImg(fileOf(l.k, l.i))));
+  if (id !== renderId) return;
+  ctx.clearRect(0,0,W,H);
+  layers.forEach((l, n) => {
+    const a = assets[n];
+    if (l.k === 'base'){ a ? place(a, BASE_SLOT, 'top', {}, false) : drawBody(); return; }
+    const t = (TUNE[l.k] || {})[l.i] || {};
+    if (a){ place(a, l.cat.slot, l.cat.anchor, t, false); if (l.cat.twin) place(a, l.cat.twin, l.cat.anchor, t, true); }
+    else { placeholder(l.cat, l.i, l.cat.slot); if (l.cat.twin) placeholder(l.cat, l.i, l.cat.twin); }
+  });
+  if (DEBUG) drawDebug();
+}
+function place(a, slot, anchor, t, mirror){
+  const [sx,sy,sw,sh] = slot, b = a.box;
+  const k = Math.min(sw/b.w, sh/b.h) * (t.s || 1), dw = b.w*k, dh = b.h*k;
+  let dx = sx + (sw-dw)/2 + (t.dx||0)*sw * (mirror?-1:1);
+  let dy = anchor === 'top' ? sy : anchor === 'bottom' ? sy+sh-dh : sy+(sh-dh)/2;
+  dy += (t.dy||0)*sh;
+  ctx.save();
+  if (mirror){ ctx.translate(dx+dw/2, 0); ctx.scale(-1,1); ctx.translate(-(dx+dw/2), 0); }
+  ctx.drawImage(a.im, b.x, b.y, b.w, b.h, dx, dy, dw, dh);
+  ctx.restore();
+}
+function rr(x,y,w,h,r){ ctx.beginPath(); ctx.roundRect(x,y,w,h,r); }
+function placeholder(cat, i, slot){
+  const [x,y,w,h] = slot;
+  ctx.save();
+  if (cat.k === 'face'){
+    ctx.fillStyle = cat.color; ctx.strokeStyle = '#c47a4a'; ctx.lineWidth = 6;
+    ctx.beginPath(); ctx.ellipse(x+w*.06, y+h*.55, w*.09, h*.11, 0, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(x+w*.94, y+h*.55, w*.09, h*.11, 0, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(x+w/2, y+h/2, w/2, h/2, 0, 0, 7); ctx.fill(); ctx.stroke();
+    badge(x+w*.8, y+h*.9, i);
+  } else {
+    ctx.globalAlpha = .55; ctx.fillStyle = cat.color; rr(x,y,w,h,Math.min(w,h)*.25); ctx.fill();
+    ctx.globalAlpha = .9; ctx.strokeStyle = '#fff4dc'; ctx.lineWidth = 4; ctx.setLineDash([12,10]); ctx.stroke();
+    ctx.globalAlpha = 1; ctx.setLineDash([]);
+    const fs = Math.min(w,h)*.5;
+    ctx.font = `${fs}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(cat.icon, x+w/2, y+h/2 - (h > fs*1.6 ? fs*.35 : 0));
+    if (h > fs*1.6) badge(x+w/2, y+h/2+fs*.55, i);
+  }
+  ctx.restore();
+}
+function badge(x, y, n){
+  ctx.save(); ctx.fillStyle = '#2a1a55'; ctx.beginPath(); ctx.arc(x, y, 26, 0, 7); ctx.fill();
+  ctx.fillStyle = '#ffe08a'; ctx.font = 'bold 30px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(n, x, y+2); ctx.restore();
+}
+// ตัวฐานสำรอง: ลำตัวชุดขาว (ไม่มีหัว — หัวมาจากหมวดโครงหน้า)
+function drawBody(){
+  ctx.save(); ctx.fillStyle = '#fbf7ff'; ctx.strokeStyle = '#8f7bd6'; ctx.lineWidth = 8; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  rr(460,440,80,70,28); ctx.fill(); ctx.stroke();                       // คอ
+  ctx.beginPath(); ctx.moveTo(410,530); ctx.lineTo(290,765); ctx.lineWidth = 54; ctx.stroke();   // แขน
+  ctx.beginPath(); ctx.moveTo(590,530); ctx.lineTo(710,765); ctx.stroke();
+  ctx.lineWidth = 38; ctx.strokeStyle = '#fbf7ff';
+  ctx.beginPath(); ctx.moveTo(410,530); ctx.lineTo(290,765); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(590,530); ctx.lineTo(710,765); ctx.stroke();
+  ctx.lineWidth = 8; ctx.strokeStyle = '#8f7bd6';
+  rr(390,495,220,260,60); ctx.fill(); ctx.stroke();                     // ลำตัว
+  rr(400,745,90,320,30); ctx.fill(); ctx.stroke();                      // ขา
+  rr(510,745,90,320,30); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(405,1130,65,40,0,0,7); ctx.fill(); ctx.stroke();   // เท้า
+  ctx.beginPath(); ctx.ellipse(595,1130,65,40,0,0,7); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(290,765,42,0,7); ctx.fill(); ctx.stroke();          // มือ
+  ctx.beginPath(); ctx.arc(710,765,42,0,7); ctx.fill(); ctx.stroke();
+  ctx.restore();
+}
+function drawDebug(){
+  ctx.save(); ctx.font = '22px sans-serif'; ctx.textBaseline = 'top';
+  ctx.strokeStyle = '#ff66aa'; ctx.lineWidth = 2; ctx.strokeRect(...BASE_SLOT); ctx.fillStyle = '#ff66aa'; ctx.fillText('base', BASE_SLOT[0]+4, BASE_SLOT[1]+2);
+  CATS.filter(c => c.slot).forEach(c => {
+    [c.slot, c.twin].filter(Boolean).forEach(([x,y,w,h]) => {
+      ctx.strokeStyle = '#00ff88'; ctx.lineWidth = 2; ctx.strokeRect(x,y,w,h);
+      ctx.fillStyle = '#00ff88'; ctx.fillText(c.k, x+4, y+2);
+    });
+  });
+  ctx.restore();
+}
+
+/* ---------- UI ---------- */
+const tabsEl = document.getElementById('tabs'), gridEl = document.getElementById('grid'), pickEl = document.getElementById('pick');
+function buildTabs(){
+  tabsEl.innerHTML = '';
+  CATS.forEach(c => {
+    const b = document.createElement('button');
+    b.className = 'tab' + (c.k === tab ? ' on' : ''); b.type = 'button';
+    b.innerHTML = `${c.icon}<small>${c.short || c.name}</small>`; b.setAttribute('aria-label', c.name);
+    b.onclick = () => { tab = c.k; buildTabs(); buildGrid(); b.scrollIntoView({ inline:'center', block:'nearest', behavior:'smooth' }); };
+    tabsEl.appendChild(b);
+  });
+}
+function buildGrid(){
+  const c = byKey[tab]; gridEl.innerHTML = '';
+  const tile = (i, label, cls) => {
+    const b = document.createElement('button'); b.type = 'button';
+    b.className = 'opt' + (state[tab] === i ? ' on' : '') + (cls ? ' ' + cls : '');
+    b.setAttribute('role','option'); b.setAttribute('aria-label', label); b.setAttribute('aria-selected', state[tab] === i);
+    if (i === 0) b.innerHTML = `<span class="ph">✕</span>`;
+    else {
+      b.innerHTML = `<span class="ph">${tab==='gender'?(i===1?'👧':'👦'):c.icon}<b>${i}</b></span>`;
+      thumb(b, fileOf(tab === 'gender' ? 'base' : tab, i));
+    }
+    b.onclick = () => { state[tab] = i; save(); buildGrid(); render(); };
+    gridEl.appendChild(b);
+  };
+  if (c.none) tile(0, 'ไม่ใส่', 'none');
+  c.opt.forEach((name, n) => tile(n+1, name, tab === 'gender' ? (n === 0 ? 'girl' : 'boy') : ''));
+  pickEl.textContent = `${c.name}: ${state[tab] ? c.opt[state[tab]-1] : 'ไม่ใส่'}`;
+}
+// รูปย่อในช่องเลือก: ตัดขอบใสแล้วย่อลง 128px  (ไม่มีไฟล์ → คง placeholder ไว้)
+function thumb(btn, src){
+  const cn = document.createElement('canvas'); cn.width = cn.height = 128; btn.appendChild(cn);
+  loadImg(src).then(a => {
+    if (!a) return;
+    const x = cn.getContext('2d'), bx = a.box, k = Math.min(112/bx.w, 112/bx.h);
+    x.drawImage(a.im, bx.x, bx.y, bx.w, bx.h, (128-bx.w*k)/2, (128-bx.h*k)/2, bx.w*k, bx.h*k);
+    cn.classList.add('ok');
+  });
+}
+
+document.getElementById('btnRandom').onclick = () => {
+  CATS.forEach(c => { if (c.k === 'gender') return;
+    state[c.k] = (c.none && Math.random() < .3) ? 0 : 1 + Math.floor(Math.random()*c.opt.length); });
+  save(); buildGrid(); render(); toast('สุ่มแล้ว 🎲');
+};
+document.getElementById('btnReset').onclick = () => { state = {...DEFAULT}; save(); buildGrid(); render(); toast('เริ่มใหม่แล้ว'); };
+document.getElementById('btnOk').onclick = () => { save(); toast('บันทึกแล้ว ✨ เก่งมาก!'); };
+document.getElementById('btnSave').onclick = () => {
+  cv.toBlob(b => {
+    if (!b){ toast('บันทึกรูปไม่ได้'); return; }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'leah-dressup.png';
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    toast('บันทึกรูปแล้ว 💾');
+  }, 'image/png');
+};
+let toastT;
+function toast(msg){ const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 1600); }
+
+// ดาวประดับฉาก
+(() => { const s = document.getElementById('stars'); for (let i=0;i<28;i++){ const d = document.createElement('i');
+  d.style.left = Math.random()*100+'%'; d.style.top = Math.random()*60+'%'; d.style.opacity = .3+Math.random()*.6; s.appendChild(d); } })();
+
+buildTabs(); buildGrid(); render();
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
+</script>
+</body>
+</html>
