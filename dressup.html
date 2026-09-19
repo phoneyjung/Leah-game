@@ -44,6 +44,10 @@
   #box{flex:1;min-height:0;display:flex;flex-direction:column;background:var(--plum);
     border:3px solid var(--gold);border-radius:18px;padding:8px;box-shadow:0 10px 30px rgba(0,0,0,.45),inset 0 0 0 2px #2b1e5c}
   #pick{font-size:15px;padding:2px 6px 8px;color:var(--gold2);min-height:24px}
+  #swatches{display:flex;flex-wrap:wrap;gap:7px;padding:0 4px 10px;flex:none}
+  .sw{width:32px;height:32px;border-radius:50%;border:3px solid #7c67cf;padding:0;cursor:pointer;box-shadow:inset 0 -6px 10px rgba(0,0,0,.25)}
+  .sw.on{border-color:var(--gold);box-shadow:0 0 0 3px rgba(246,196,83,.4),inset 0 -6px 10px rgba(0,0,0,.25);transform:scale(1.12)}
+  .sw.nat{background:conic-gradient(#5a361a,#f0d080,#8ac4ff,#ffb4dc,#5a361a)}
   #grid{flex:1;min-height:0;overflow-y:auto;display:grid;grid-template-columns:repeat(5,1fr);gap:8px;align-content:start;padding:2px}
   .opt{position:relative;aspect-ratio:1;border:3px solid #7c67cf;border-radius:14px;background:#5b4aa8;padding:0;cursor:pointer;overflow:hidden;font:inherit;color:var(--cream)}
   .opt canvas{position:absolute;inset:0;width:100%;height:100%;display:none;background:#6b5bb8}
@@ -89,6 +93,7 @@
     <nav id="tabs" aria-label="หมวดแต่งตัว"></nav>
     <div id="box">
       <div id="pick"></div>
+      <div id="swatches" aria-label="สีผม"></div>
       <div id="grid" role="listbox"></div>
       <div id="actions">
         <button id="btnRandom">🎲 สุ่ม</button>
@@ -145,6 +150,14 @@ const CATS = [
   { k:'accessory', icon:'💎', name:'เครื่องประดับ', color:'#e056a0', slot:[400,480,200,110], none:true,
     opt:['สร้อยเพชร','ผ้าพันคอแดง','สร้อยไข่มุก','เข็มกลัดดาว','สร้อยจี้หัวใจ','ปกขนฟู','โบว์ผูกคอ','สร้อยเปลือกหอย','เหรียญรางวัลทอง','ผ้าพันคอลายสก็อต'] },
 ];
+// สีผม (0 = สีเดิมของรูป)  d = สีเงา  l = สีสว่าง  ทาทับด้วยความสว่างของผมเดิม
+const HAIR_COLORS = [
+  { n:'สีเดิม' },
+  { n:'ดำ', d:'#14100f', l:'#4a4148' }, { n:'น้ำตาลเข้ม', d:'#2a1810', l:'#7a5038' }, { n:'น้ำตาลอ่อน', d:'#5a361a', l:'#b8834a' },
+  { n:'แดง', d:'#6a1e12', l:'#d8663c' }, { n:'ทอง', d:'#8a5a1e', l:'#f0d080' }, { n:'เงิน', d:'#8c8a90', l:'#f4f2f6' },
+  { n:'ชมพู', d:'#a03068', l:'#ffb4dc' }, { n:'ม่วง', d:'#4a1a80', l:'#c09cff' }, { n:'ฟ้า', d:'#164a9a', l:'#8ac4ff' },
+  { n:'มินต์', d:'#146a48', l:'#90f0c0' }, { n:'ส้ม', d:'#9a3a10', l:'#ffb060' },
+];
 // ปรับขนาด/ขยับรายชิ้น (s = สัดส่วนของช่อง, dx dy = เลื่อนเป็นสัดส่วนของช่อง)
 const TUNE = {
   hair:    { 1:{s:.94,dy:-.03}, 2:{s:.97,dy:-.03}, 4:{s:.95,dy:-.04}, 5:{s:.9,dy:-.08}, 6:{s:.9,dy:-.05}, 7:{s:1.08,dy:-.02}, 8:{dy:-.02}, 9:{s:.95,dy:-.08}, 10:{s:.92} },
@@ -157,7 +170,7 @@ const TUNE = {
 const BASE_SLOT = [200,450,600,720];
 // ลำดับการวาด ล่าง → บน
 const ORDER = ['base','face','bottom','shoes','shirt','gloves','eyes','nose','mouth','hair','glasses','hat','accessory','weapon'];
-const DEFAULT = { gender:1, hair:2, face:1, eyes:1, nose:1, mouth:1, shirt:7, gloves:0, bottom:10, shoes:10, hat:5, glasses:0, weapon:8, accessory:0 };
+const DEFAULT = { gender:1, hair:2, hairColor:0, face:1, eyes:1, nose:1, mouth:1, shirt:7, gloves:0, bottom:10, shoes:10, hat:5, glasses:0, weapon:8, accessory:0 };
 
 const pad = n => String(n).padStart(2,'0');
 const fileOf = (k,i) => k === 'base' ? `./dress-base-${i === 1 ? 'girl' : 'boy'}.png` : `./dress-${k}-${pad(i)}.png`;
@@ -191,6 +204,33 @@ function trimBox(im){
   return { x:x0/s, y:y0/s, w:(x1-x0+1)/s, h:(y1-y0+1)/s };
 }
 
+/* ---------- เปลี่ยนสีผม ---------- */
+const tintCache = {};
+const hex = h => [1,3,5].map(i => parseInt(h.slice(i,i+2),16));
+function recolor(px, col){
+  const D = hex(col.d), L = hex(col.l), n = px.length/4, hist = new Uint32Array(256);
+  let cnt = 0;
+  for (let i=0;i<n;i++){ const o=i*4; if(px[o+3]<128) continue; hist[(px[o]*299+px[o+1]*587+px[o+2]*114)/1000|0]++; cnt++; }
+  if(!cnt) return;
+  let acc=0, lo=0, hi=255;                                             // ช่วงความสว่างของผมเดิม (ตัดหาง 2%)
+  for(let v=0;v<256;v++){ acc+=hist[v]; if(acc>=cnt*.02){lo=v;break;} }
+  acc=0; for(let v=255;v>=0;v--){ acc+=hist[v]; if(acc>=cnt*.02){hi=v;break;} }
+  const range = Math.max(1, hi-lo);
+  for (let i=0;i<n;i++){ const o=i*4; if(!px[o+3]) continue;
+    let t=((px[o]*299+px[o+1]*587+px[o+2]*114)/1000-lo)/range; t=t<0?0:t>1?1:t; t=Math.pow(t,.95);
+    px[o]=D[0]+(L[0]-D[0])*t; px[o+1]=D[1]+(L[1]-D[1])*t; px[o+2]=D[2]+(L[2]-D[2])*t; }
+}
+// คืน asset ผมที่ย้อมสีแล้ว (แคชไว้)  ci=0 คืนของเดิม
+function tinted(a, ci){
+  if (!ci || !HAIR_COLORS[ci]) return a;
+  const key = a.im.src + '|' + ci; if (tintCache[key]) return tintCache[key];
+  const b = a.box, c = document.createElement('canvas'); c.width = Math.ceil(b.w); c.height = Math.ceil(b.h);
+  const x = c.getContext('2d'); x.drawImage(a.im, b.x, b.y, b.w, b.h, 0, 0, c.width, c.height);
+  let d; try{ d = x.getImageData(0,0,c.width,c.height); }catch(e){ return a; }
+  recolor(d.data, HAIR_COLORS[ci]); x.putImageData(d, 0, 0);
+  return tintCache[key] = { im:c, box:{ x:0, y:0, w:c.width, h:c.height } };
+}
+
 /* ---------- วาด ---------- */
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 let renderId = 0;
@@ -205,7 +245,8 @@ async function render(){
   if (id !== renderId) return;
   ctx.clearRect(0,0,W,H);
   layers.forEach((l, n) => {
-    const a = assets[n];
+    let a = assets[n];
+    if (a && l.k === 'hair') a = tinted(a, state.hairColor);
     if (l.k === 'base'){ a ? place(a, BASE_SLOT, 'top', {}, false) : drawBody(); return; }
     const t = (TUNE[l.k] || {})[l.i] || {};
     if (a){ place(a, l.cat.slot, l.cat.anchor, t, false); if (l.cat.twin) place(a, l.cat.twin, l.cat.anchor, t, true); }
@@ -302,20 +343,33 @@ function buildGrid(){
     if (i === 0) b.innerHTML = `<span class="ph">✕</span>`;
     else {
       b.innerHTML = `<span class="ph">${tab==='gender'?(i===1?'👧':'👦'):c.icon}<b>${i}</b></span>`;
-      thumb(b, fileOf(tab === 'gender' ? 'base' : tab, i));
+      thumb(b, fileOf(tab === 'gender' ? 'base' : tab, i), tab === 'hair' ? state.hairColor : 0);
     }
     b.onclick = () => { state[tab] = i; save(); buildGrid(); render(); };
     gridEl.appendChild(b);
   };
   if (c.none) tile(0, 'ไม่ใส่', 'none');
   c.opt.forEach((name, n) => tile(n+1, name, tab === 'gender' ? (n === 0 ? 'girl' : 'boy') : ''));
-  pickEl.textContent = `${c.name}: ${state[tab] ? c.opt[state[tab]-1] : 'ไม่ใส่'}`;
+  pickEl.textContent = `${c.name}: ${state[tab] ? c.opt[state[tab]-1] : 'ไม่ใส่'}` + (tab === 'hair' && state.hairColor ? ` · สี${HAIR_COLORS[state.hairColor].n}` : '');
+  buildSwatches();
+}
+function buildSwatches(){
+  const el = document.getElementById('swatches'); el.innerHTML = ''; el.style.display = tab === 'hair' ? '' : 'none';
+  if (tab !== 'hair') return;
+  HAIR_COLORS.forEach((col, i) => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'sw' + (i ? '' : ' nat') + (state.hairColor === i ? ' on' : '');
+    if (i) b.style.background = `linear-gradient(160deg, ${col.l}, ${col.d})`;
+    b.setAttribute('aria-label', 'สีผม ' + col.n); b.title = col.n;
+    b.onclick = () => { state.hairColor = i; save(); buildGrid(); render(); };
+    el.appendChild(b);
+  });
 }
 // รูปย่อในช่องเลือก: ตัดขอบใสแล้วย่อลง 128px  (ไม่มีไฟล์ → คง placeholder ไว้)
-function thumb(btn, src){
+function thumb(btn, src, ci){
   const cn = document.createElement('canvas'); cn.width = cn.height = 128; btn.appendChild(cn);
   loadImg(src).then(a => {
     if (!a) return;
+    if (ci) a = tinted(a, ci);
     const x = cn.getContext('2d'), bx = a.box, k = Math.min(112/bx.w, 112/bx.h);
     x.drawImage(a.im, bx.x, bx.y, bx.w, bx.h, (128-bx.w*k)/2, (128-bx.h*k)/2, bx.w*k, bx.h*k);
     cn.classList.add('ok');
@@ -325,6 +379,7 @@ function thumb(btn, src){
 document.getElementById('btnRandom').onclick = () => {
   CATS.forEach(c => { if (c.k === 'gender') return;
     state[c.k] = (c.none && Math.random() < .3) ? 0 : 1 + Math.floor(Math.random()*c.opt.length); });
+  state.hairColor = Math.floor(Math.random()*HAIR_COLORS.length);
   save(); buildGrid(); render(); toast('สุ่มแล้ว 🎲');
 };
 document.getElementById('btnReset').onclick = () => { state = {...DEFAULT}; save(); buildGrid(); render(); toast('เริ่มใหม่แล้ว'); };
