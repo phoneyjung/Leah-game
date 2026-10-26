@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>ที่พักโตเกียว 18–23 ธ.ค.</title>
+<meta name="description" content="เทียบที่พักโตเกียว 10 ที่ คะแนน ราคา ที่จอดรถ แผนที่ และลิงก์จอง Booking.com กับ Agoda">
+<meta property="og:type" content="website">
+<meta property="og:title" content="ที่พักโตเกียว 18–23 ธ.ค.">
+<meta property="og:description" content="เทียบ 10 ที่พัก · คะแนนแบบขับรถเที่ยว · ราคา ที่จอดรถ และลิงก์จอง">
+<meta property="og:image" content="https://phoneyjung.github.io/Leah-game/tokyo-2026/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:url" content="https://phoneyjung.github.io/Leah-game/tokyo-2026/">
+<style>
+:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0}
+img{max-width:100%}
+[hidden]{display:none!important}
+</style>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bai+Jamjuree:wght@500;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600&display=swap">
+<style>
+/* Layout: one column for phone — header, weight controls, ranked list, then one card per hotel in ranked order */
+:root{
+  --bg:#FBF6EC; --surface:#FFFFFF; --ink:#172B3F; --muted:#5A6B7C; --line:#E4DACA;
+  --blue:#1F4E79; --blue-soft:#E3ECF5; --accent:#C8401A; --accent-soft:#F8E3DA;
+  --good:#2E7D4F; --warn:#9A6414; --bad:#B83A2E; --warn-soft:#FBF0DC;
+  --display:'Bai Jamjuree','IBM Plex Sans Thai',system-ui,sans-serif;
+  --body:'IBM Plex Sans Thai',system-ui,-apple-system,'Segoe UI',sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0F1A26; --surface:#162536; --ink:#E8EEF4; --muted:#9AACBE; --line:#2A3B4E;
+  --blue:#86B6E4; --blue-soft:#1D3247; --accent:#F08A66; --accent-soft:#3A2420;
+  --good:#6CC593; --warn:#E3B35C; --bad:#EF7B6E; --warn-soft:#33291A; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0F1A26; --surface:#162536; --ink:#E8EEF4; --muted:#9AACBE; --line:#2A3B4E;
+  --blue:#86B6E4; --blue-soft:#1D3247; --accent:#F08A66; --accent-soft:#3A2420;
+  --good:#6CC593; --warn:#E3B35C; --bad:#EF7B6E; --warn-soft:#33291A; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.6}
+.wrap{max-width:760px;margin:0 auto;padding-inline:16px;padding-block:20px 48px;display:flex;flex-direction:column;gap:22px}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;line-height:1.25}
+h1{font-size:1.75rem;color:var(--blue)}
+h2{font-size:1.15rem}
+h3{font-size:1.1rem}
+.sub{color:var(--muted);margin:6px 0 0}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.chip{font-size:.8rem;padding:2px 10px;border-radius:999px;background:var(--blue-soft);color:var(--blue);font-weight:500}
+.num{font-variant-numeric:tabular-nums}
+section{display:flex;flex-direction:column;gap:10px}
+.label{font-size:.75rem;letter-spacing:.06em;color:var(--muted);font-weight:600}
+
+/* weights */
+.weights{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.w{display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:6px 6px 6px 12px}
+.w span{font-size:.9rem;min-width:0}
+.w input{width:64px;font:inherit;font-variant-numeric:tabular-nums;text-align:center;padding:4px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)}
+.w input:focus-visible,button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.row-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:4px 12px}
+.note{font-size:.85rem;color:var(--muted)}
+
+/* ranking */
+.rank{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.rank a{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:4px 10px;align-items:center;padding:10px 12px;color:inherit;text-decoration:none;border-top:1px solid var(--line)}
+.rank a:first-child{border-top:0}
+.rank .pos{font-family:var(--display);font-weight:700;color:var(--muted);text-align:center}
+.rank a:first-child .pos{color:var(--accent)}
+.rank .nm{font-weight:600;min-width:0}
+.rank .sc{font-family:var(--display);font-weight:700;font-size:1.1rem;color:var(--blue)}
+.bar{grid-column:2 / 4;height:6px;border-radius:3px;background:var(--blue-soft);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--blue);border-radius:3px}
+.rank .meta{grid-column:2 / 4;font-size:.8rem;color:var(--muted);margin-top:-2px}
+
+/* cards */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:12px;scroll-margin-top:12px}
+.card-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.card-head > div{min-width:0}
+.area{font-size:.85rem;color:var(--muted)}
+.big{font-family:var(--display);font-weight:700;font-size:1.6rem;color:var(--blue);line-height:1;text-align:right}
+.big small{display:block;font-size:.7rem;font-weight:500;color:var(--muted);margin-top:4px;font-family:var(--body)}
+.price{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;padding:10px 12px;border-radius:10px;background:var(--blue-soft)}
+.price b{font-family:var(--display);font-size:1.3rem;color:var(--blue)}
+.price span{font-size:.85rem;color:var(--muted)}
+.scores{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+@media (max-width:420px){.scores{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.s{display:flex;flex-direction:column;gap:3px;min-width:0}
+.s .t{display:flex;justify-content:space-between;font-size:.78rem;color:var(--muted);gap:4px}
+.s .t b{color:var(--ink);font-variant-numeric:tabular-nums}
+.s .mini{height:5px;border-radius:3px;background:var(--line);overflow:hidden}
+.s .mini i{display:block;height:100%;border-radius:3px}
+dl{margin:0;display:grid;grid-template-columns:96px minmax(0,1fr);gap:8px 12px;font-size:.92rem}
+dt{color:var(--muted);font-weight:500}
+dd{margin:0;min-width:0}
+.flag{font-size:.85rem;padding:8px 12px;border-radius:10px;background:var(--warn-soft);color:var(--warn);border:1px solid var(--line)}
+.flag.bad{background:var(--accent-soft);color:var(--bad)}
+.links{display:flex;flex-wrap:wrap;gap:8px}
+.links a{flex:1 1 120px;text-align:center;text-decoration:none;font-weight:600;padding:9px 10px;border-radius:10px;border:1px solid var(--blue);color:var(--blue)}
+.links a.primary{background:var(--blue);color:var(--surface)}
+.coord{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.coord code{font-family:ui-monospace,Menlo,monospace;font-size:.85rem;user-select:all}
+.coord button{font-size:.8rem;padding:2px 10px}
+.tablewrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:12px}
+.st{border-collapse:collapse;width:100%;min-width:620px;font-size:.88rem;font-variant-numeric:tabular-nums}
+.st th,.st td{padding:8px 10px;text-align:center;border-bottom:1px solid var(--line);white-space:nowrap}
+.st th{font-weight:600;color:var(--muted);font-size:.78rem;background:var(--blue-soft)}
+.st td:first-child,.st th:first-child{text-align:left;position:sticky;left:0;background:var(--surface)}
+.st th:first-child{background:var(--blue-soft)}
+.st td.tot{font-family:var(--display);font-weight:700;color:var(--blue)}
+.st tr:last-child td{border-bottom:0}
+.pc{display:grid;grid-template-columns:minmax(0,1fr);gap:4px;margin:0;padding:0;list-style:none;font-size:.92rem}
+.pc li{padding-left:18px;position:relative}
+.pc li::before{content:'+';position:absolute;left:2px;color:var(--good);font-weight:700}
+.pc li.con::before{content:'!';color:var(--warn)}
+footer{font-size:.85rem;color:var(--muted);display:flex;flex-direction:column;gap:6px}
+footer p{margin:0}
+@media (prefers-reduced-motion: no-preference){.bar i,.mini i{transition:width .3s ease}}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>ที่พักโตเกียว 18–23 ธ.ค.</h1>
+    <p class="sub">เทียบ 10 ที่ สำหรับ 5 คืนช่วงโตเกียว คิดคะแนนแบบขับรถเที่ยวเป็นหลัก ปรับตัวคูณข้างล่างแล้วอันดับจะเรียงใหม่ทันที</p>
+    <div class="chips">
+      <span class="chip">5 คืน · เช็กอิน 18 ธ.ค.</span>
+      <span class="chip">ผู้ใหญ่ 3 + เด็ก 6 ขวบ</span>
+      <span class="chip">รถ Serena สูงประมาณ 1.87 ม.</span>
+      <span class="chip">ราคา Booking.com ณ 8 ต.ค. 2026</span>
+    </div>
+  </header>
+
+  <section aria-labelledby="wt">
+    <h2 id="wt">ตัวคูณ (ความสำคัญ)</h2>
+    <div class="weights" id="weights"></div>
+    <div class="row-actions">
+      <button type="button" id="reset">กลับเป็นค่าเริ่มต้น</button>
+      <span class="note">คะแนนเต็ม 100 ทุกเกณฑ์ให้ 0–10 แล้วคูณด้วยตัวคูณ</span>
+    </div>
+  </section>
+
+  <section aria-labelledby="rk">
+    <h2 id="rk">อันดับ</h2>
+    <nav class="rank" id="rank"></nav>
+  </section>
+
+  <section aria-labelledby="tb">
+    <h2 id="tb">ตารางคะแนนแยกเกณฑ์</h2>
+    <div class="tablewrap"><table class="st" id="stable"></table></div>
+    <p class="note">คะแนนแต่ละเกณฑ์เต็ม 10 ตัวเลขในวงเล็บคือตัวคูณ คะแนนรวมคิดเป็นเต็ม 100</p>
+  </section>
+
+  <section aria-labelledby="dt">
+    <h2 id="dt">รายละเอียดแต่ละที่</h2>
+    <div id="cards" style="display:flex;flex-direction:column;gap:14px"></div>
+  </section>
+
+  <section aria-labelledby="dp">
+    <h2 id="dp">ที่จอดตามจุดเที่ยว (รถสูงประมาณ 1.87 ม.)</h2>
+    <div class="tablewrap"><table class="st">
+      <thead><tr><th>วัน · จุดเที่ยว</th><th>ที่จอด</th><th>รับรถ</th><th>ค่าจอด</th></tr></thead>
+      <tbody>
+        <tr><td>15 ธ.ค. · Ginza Loft</td><td>Times Hulic Ginza 2-chome (Ginza 2-9)</td><td>สูง ≤ 2.05 ม.</td><td>330 เยน/30 นาที · สูงสุด 2,000 เยน/24 ชม.</td></tr>
+        <tr><td>20 ธ.ค. · Yodobashi Akiba</td><td>ลานของห้าง 520 คัน · 07:30–24:00</td><td>สูง 2.1 กว้าง 2.4 ยาว 5.0 ม.</td><td>400 เยน/30 นาที วันอาทิตย์ไม่มีเพดาน · ซื้อ 5,000 เยนฟรี 1 ชม. · 10,000 เยนฟรี 2 ชม.</td></tr>
+        <tr><td>20 ธ.ค. · Skytree</td><td>ลานทางการ 912 คัน</td><td>สูง 2.1 กว้าง 1.9 ยาว 5.0 ม. ≤ 2.3 ตัน</td><td>450 เยน/30 นาที ไม่มีเพดาน</td></tr>
+        <tr><td>21 ธ.ค. · Meiji Jingu + Harajuku</td><td>Ark Jingumae Parking (A) · จองผ่าน akippa · จอดแล้วเดินได้ทั้งสองที่</td><td>สูง ≤ 2.3 ม.</td><td>วันธรรมดา 08:00–23:30 · สูงสุด 1,980 เยน/วัน</td></tr>
+        <tr><td>21 ธ.ค. · Ueno (ทางเลือก)</td><td>ลานใต้ดิน Ueno Chuo-dori</td><td>สูง 2.0 กว้าง 1.9 ยาว 5.3 ม.</td><td>วันธรรมดา 08:00–22:00 สูงสุด 2,000 เยน</td></tr>
+        <tr><td>22 ธ.ค. · TAKEYA</td><td>ลานของร้าน 120 คัน</td><td>ไม่พบข้อมูลความสูง ต้องถาม</td><td>ซื้อ 2,000 เยนจอดฟรี 2 ชม.</td></tr>
+      </tbody>
+    </table></div>
+    <p class="note">อย่าใช้ลาน Laforet Harajuku และลานส่วนใหญ่ในห้างย่าน Ginza เพราะรับรถสูงไม่เกิน 1.55 ม. ค่าจอดมาจากเว็บที่จอดและบทความปี 2024–2026 อาจเปลี่ยนแล้ว</p>
+  </section>
+
+  <footer>
+    <p><b>ราคา</b> เป็นราคารวม 5 คืนจาก Booking.com ที่เช็กวันที่ 8 ต.ค. 2026 ราคาเปลี่ยนได้ทุกวัน ราคา Agoda ยังไม่ได้เช็กโดยตรง ที่ระบุไว้มาจาก Trivago ซึ่งแสดงแค่เว็บที่ถูกที่สุด</p>
+    <p><b>ความคุ้ม</b> คิดจากราคา ถูกสุดในกลุ่มได้ 10 แพงสุดได้ 4 ที่ไม่มีอาหารเช้าใช้ราคาห้องอย่างเดียว</p>
+    <p><b>เกณฑ์อื่น</b> (ห้อง ที่จอด ร้านสะดวกซื้อ อาหารเช้า ทำเล) เป็นการประเมินจากข้อมูลโรงแรม รีวิว และระยะบน Google Maps ระยะร้านสะดวกซื้อเป็นเส้นตรง เดินจริงไกลกว่านี้เล็กน้อย</p>
+    <p><b>ลิงก์ Agoda</b> ที่มีเครื่องหมาย * สร้างจากชื่อโรงแรม ยังไม่ได้ยืนยันว่าเป็นหน้าของโรงแรมนั้นจริง ถ้ากดแล้วไม่ใช่ ให้ค้นชื่อโรงแรมใน Agoda แทน</p>
+  </footer>
+</div>
+
+<script>
+const CRIT=[
+  {k:'room',n:'ขนาดห้อง',w:1.2},
+  {k:'value',n:'ความคุ้ม',w:1.2},
+  {k:'park',n:'ที่จอดรถ',w:1},
+  {k:'konbini',n:'ร้านสะดวกซื้อ',w:1},
+  {k:'bf',n:'อาหารเช้า',w:1},
+  {k:'loc',n:'ขับไปเที่ยวสะดวก',w:1},
+];
+const BQ='checkin=2026-12-18&checkout=2026-12-23&group_adults=3&group_children=1&age=6&selected_currency=THB&no_rooms=';
+const AQ='checkIn=2026-12-18&los=5&adults=3&children=1&childages=6&rooms=';
+const H=[
+ {id:'east21',pros:["ถูกที่สุดในกลุ่ม 4 อันดับแรก", "อาหารเช้าดีที่สุด มีออมเล็ตทำสด", "ค่าจอดถูก 1,500 เยน ไม่ต้องจอง", "ใกล้ทางด่วน KidZania และทางไป Kisarazu มีสระว่ายน้ำในร่ม"],cons:["ถ้านั่งรถไฟ ต้องเดินไปสถานี 10 นาทีและเปลี่ยนสาย"],name:'Hotel East 21 Tokyo',area:'Toyocho, Koto',rating:8.5,price:60616,rooms:2,priceNote:'รวมอาหารเช้า · ต้องเช็กว่าได้ห้องแบบไหน',
+  agodaNote:'Trivago: ถูกสุดคือ Trip.com 30,105 บาท (ห้องอย่างเดียว น่าจะเป็นห้องเล็กกว่า)',
+  s:{room:7,park:10,konbini:8,bf:9,loc:9},
+  room:'Twin 27 ตร.ม. × 2 ห้อง หรือ Family 34 ตร.ม. ห้องเดียว · มีสระว่ายน้ำในร่ม (อาจมีค่าใช้)',
+  park:'ในร่ม 111 คัน · 1,500 เยน/คืน · สูงไม่เกิน 2.1 ม. · ไม่ต้องจอง · จอดได้ถึง 16:00 วันถัดไป',
+  bf:'บุฟเฟต์ญี่ปุ่น-ตะวันตก มีออมเล็ตทำสดและข้าวหน้าหอย Fukagawa · ผู้ใหญ่ 3,630 เด็ก 1,500 เยน · 06:00–10:30',
+  konbini:'FamilyMart และ Natural Lawson 24 ชม. ฝั่งตรงข้ามถนน ประมาณ 150–190 ม.',
+  loc:'ใกล้ทางขึ้นทางด่วน Kiba (Shuto สาย 9) และ Wangan · KidZania ประมาณ 3 กม. · ไป Kisarazu และนาริตะสะดวก · ถ้านั่งรถไฟ สถานี Toyocho เดินประมาณ 10 นาที',
+  flag:null, lat:35.674496,lng:139.814412,pid:'ChIJiYfvh_2IGGARMcIRnDLkOzg',
+  bk:'east-21-tokyo',ag:'hotel-east-21-tokyo-okura-hotels-resorts',agGuess:false},
+ {id:'richmond',pros:["ห้องใหญ่ที่สุด Twin 38 ตร.ม. × 2", "ติด Skytree และสถานี Oshiage", "ซูเปอร์มาร์เก็ต Life อยู่ในตึก", "อาหารเช้าดี ค่าจอดถูก 1,500 เยน"],cons:["เอารถออกระหว่างวันเสียค่าจอดเพิ่มทุกครั้ง"],name:'Richmond Hotel Premier Tokyo Schole',area:'Oshiage, Sumida',rating:9.1,price:85849,rooms:2,priceNote:'2 ห้อง รวมอาหารเช้า (ห้องเดียวรวมอาหารเช้า 98,144)',
+  agodaNote:'Trivago: Booking.com ถูกที่สุด',
+  s:{room:10,park:5,konbini:10,bf:8,loc:8},
+  room:'Twin 38 ตร.ม. × 2 ห้อง หรือ Deluxe Twin 54.4 ตร.ม. ห้องเดียว + เตียงเสริม',
+  park:'ลาน Times ชั้น 3–4 ในตึกโรงแรม · 1,500 เยน/คืน · สูง 2.1 กว้าง 1.9 ยาว 5.0 ม. หนักไม่เกิน 2.5 ตัน · จองไม่ได้',
+  bf:'บุฟเฟต์ · ผู้ใหญ่ 2,500 เด็กประถม 1,250 เยน · 06:30–10:30 · รีวิวส่วนใหญ่ชม',
+  konbini:'ซูเปอร์มาร์เก็ต Life ในตึกเดียวกัน (09:30–24:00) · FamilyMart ที่สถานีประมาณ 70 ม. · 7-Eleven 24 ชม. ประมาณ 160 ม.',
+  loc:'Skytree อยู่ติดโรงแรม · ใกล้ทางขึ้นทางด่วน Mukojima (Shuto สาย 6) · ติดสถานี Oshiage',
+  flag:{t:'เอารถออกระหว่างวันต้องเสียค่าจอดเพิ่มทุกครั้ง ถ้าขับรถเที่ยวทุกวันจะเสียเพิ่มเกือบทุกวัน',bad:true},
+  lat:35.710234,lng:139.813758,pid:'ChIJlTrCJyqPGGARe9oTcpE9r3k',
+  bk:'richmond-hotel-premier-tokyo-oshiage',ag:'richmond-hotel-premier-tokyo-oshiage',agGuess:false},
+ {id:'dome',pros:["Lawson 24 ชม. อยู่ในโรงแรม", "ติด Tokyo Dome City มีเครื่องเล่นให้ลูก", "ที่จอดใหญ่ 283 คัน", "JR ไป Akihabara 2 สถานี"],cons:["ห้องเดียว เตียงเดี่ยว 3 เตียง ลูกต้องนอนร่วม"],name:'Tokyo Dome Hotel',area:'Suidobashi, Bunkyo',rating:8.7,price:76006,rooms:1,priceNote:'ห้องเดียว รวมอาหารเช้า',
+  agodaNote:'Trivago ไม่มีราคา',
+  s:{room:7,park:9,konbini:10,bf:7,loc:8},
+  room:'Triple 33 ตร.ม. เตียงเดี่ยว 3 เตียง (ลูกนอนร่วม)',
+  park:'ในร่ม 283 คัน · 2,000 เยน/คืน · สูงไม่เกิน 2.1 ม. · จองไม่ได้ · รอบละ 14:00–13:00 วันถัดไป',
+  bf:'บุฟเฟต์ · รีวิวส่วนใหญ่ดี มีบางคนว่าควรปรับปรุง',
+  konbini:'Lawson 24 ชม. อยู่ชั้น 2 ของโรงแรม · 7-Eleven ประมาณ 140 ม.',
+  loc:'อยู่กลางเมือง ใกล้ Harajuku ที่สุดในกลุ่ม (ประมาณ 6 กม.) · ใกล้ทางขึ้นทางด่วน Iidabashi (Shuto สาย 5) · ไกล Kisarazu และนาริตะกว่าที่อื่น · ติด Tokyo Dome City',
+  flag:null, lat:35.703667,lng:139.753393,pid:'ChIJRZ_bSz-MGGARPMc7IsdsZiY',
+  bk:'tokyo-dome-hotel',ag:'tokyo-dome-hotel',agGuess:true},
+ {id:'tobu',pros:["ทำเลเข้ากับแผนที่สุด ไม่ต้องแก้แผน", "JR ไป Akihabara และสาย Hanzomon ไป Omotesando ได้ตรง", "ที่จอดรับรถสูงได้ 2.2 ม.", "ร้านสะดวกซื้อและซูเปอร์มาร์เก็ตรอบโรงแรม"],cons:["อาหารเช้าเมนูซ้ำ ค่าจอด 3,000 เยน และจองที่จอดไม่ได้"],name:'Tobu Hotel Levant Tokyo',area:'Kinshicho, Sumida · ที่เลือกไว้เดิม',rating:8.8,price:68626,rooms:2,priceNote:'2 ห้อง รวมอาหารเช้า (ห้องเดียวรวมอาหารเช้า 63,642)',
+  agodaNote:'Trivago: ถูกสุดคือ Trip.com 55,141 บาท (ห้องเดียว ไม่รวมอาหารเช้า)',
+  s:{room:8,park:8,konbini:10,bf:6,loc:9},
+  room:'Twin 28.5 ตร.ม. × 2 ห้อง หรือห้อง 4 เตียงเดี่ยว ห้องเดียว',
+  park:'ในร่ม 84 คัน · 3,000 เยน/คืน · สูงไม่เกิน 2.2 ม. · จองไม่ได้ มาก่อนได้ก่อน',
+  bf:'บุฟเฟต์ มีออมเล็ตทำสด · ผู้ใหญ่ 2,700 เยน · รีวิวแบ่งสองฝั่ง บางคนว่าเมนูซ้ำ',
+  konbini:'FamilyMart ประมาณ 40 ม. (07:00–22:00) · 7-Eleven และ Lawson 24 ชม. ไม่ถึง 100 ม. · ซูเปอร์มาร์เก็ต LIFE',
+  loc:'ใกล้ทางขึ้นทางด่วน Kinshicho (Shuto สาย 7) ต่อไปนาริตะและ Kisarazu ได้ · Skytree ประมาณ 1.4 กม. · สถานี Kinshicho 5 นาทีถ้าอยากนั่งรถไฟ · แผนเดิมเขียนจากที่นี่',
+  flag:null, lat:35.697213,lng:139.810939,pid:'ChIJBbNl_1yNGGARuA1NfRdQ4cs',
+  bk:'tobu-levant-tokyo',ag:'tobu-hotel-levant-tokyo',agGuess:false},
+ {id:'asakusatobu',pros:["รีวิวสูง 9.1 จากกว่า 7,800 รีวิว", "ติดสถานี Asakusa สาย Ginza ไป Ueno และ Omotesando ได้ตรง", "7-Eleven ติดโรงแรม", "มีห้องธีม Hello Kitty"],cons:["แพง และเป็นห้องเดียวแบบ Triple ต้องจองที่จอด"],name:'Asakusa Tobu Hotel',area:'Asakusa, Taito · ตัวเลือกใหม่',rating:9.1,price:88595,rooms:1,priceNote:'ห้องเดียว รวมอาหารเช้า',
+  agodaNote:'Trivago ไม่มีราคา',
+  s:{room:7,park:7,konbini:10,bf:8,loc:8},
+  room:'Deluxe Triple 35 ตร.ม. · มีห้องธีม Hello Kitty (ราคาแยก)',
+  park:'อาคารจอดรถ · 2,750 เยน/คืน · ต้องจอง · รับรถสูงไม่ถึง 2.0 ม. (ควรถามความกว้างและน้ำหนักเพิ่ม)',
+  bf:'บุฟเฟต์ · รีวิวว่าดีและวิวสวย',
+  konbini:'7-Eleven ติดโรงแรม',
+  loc:'ติดสถานี Asakusa · สาย Ginza ไป Ueno และ Omotesando ได้ตรง · สาย Tobu ไป Skytree 1 สถานี',
+  flag:null, lat:35.711385,lng:139.797425,pid:'ChIJ8UTIv8aOGGARrFzeWHTIBKU',
+  bk:'asakusa-tobu',ag:'asakusa-tobu-hotel',agGuess:true},
+ {id:'ariake',pros:["ค่าจอดถูกที่สุด 1,000 เยน ไม่ต้องจอง", "ร้านสะดวกซื้อและ McDonald's อยู่ในตึก", "ใกล้ KidZania และทางไป Kisarazu"],cons:["ห้องเล็ก รีวิวต่ำกว่าที่อื่น และไกลย่าน Ueno กับ Skytree"],name:'Tokyo Bay Ariake Washington Hotel',area:'Ariake, Koto · ตัวเลือกใหม่',rating:8.3,price:69445,rooms:1,priceNote:'ห้องเดียว รวมอาหารเช้า',
+  agodaNote:'Trivago ไม่มีราคา',
+  s:{room:5,park:9,konbini:10,bf:7,loc:7},
+  room:'Superior Triple 29 ตร.ม. ชั้นสูง · รับผู้ใหญ่ 3 ต้องถามเรื่องเตียงของลูก',
+  park:'อาคารจอดรถ · 1,000 เยน/คืน · สูง 2.1 กว้าง 1.9 ยาว 5.5 ม. · จองไม่ได้',
+  bf:'บุฟเฟต์ · รีวิวว่าอร่อย',
+  konbini:'ร้านสะดวกซื้อและ McDonald\'s อยู่ในตึก',
+  loc:'KidZania ประมาณ 2.6 กม. · ใกล้ทางด่วน Wangan ไป Kisarazu ใกล้ที่สุด · Akihabara, Ueno และ Skytree ประมาณ 8–9 กม.',
+  flag:{t:'คะแนนรีวิวบน Trivago 7.6 จาก 13,290 รีวิว ต่ำกว่าที่อื่นในกลุ่ม และห้องค่อนข้างเล็ก',bad:false},
+  lat:35.632620,lng:139.793354,pid:'ChIJz_vNA-iJGGAR7k76BIoVQP0',
+  bk:'tokyo-bay-ariake-washingtonhotel',ag:'tokyo-bay-ariake-washington-hotel',agGuess:true},
+ {id:'monday',pros:["มีครัวและเครื่องซักผ้าอบแห้งในห้อง", "7-Eleven ห่าง 40 ม.", "ที่จอดจองได้ รับรถสูงได้ 2.3 ม.", "ราคาบน Agoda ถูกกว่า (56,262 บาท)"],cons:["ไม่มีอาหารเช้า และต้องเช็กเอาต์ 10:00"],name:'MONday Apart Premium Ueno',area:'Kitaueno, Taito',rating:8.7,price:67382,rooms:1,priceNote:'ห้องเดียว ไม่มีอาหารเช้า',
+  agodaNote:'Trivago: Agoda ถูกกว่า ที่ 56,262 บาท',
+  s:{room:6,park:7,konbini:9,bf:3,loc:7},
+  room:'30 ตร.ม. เตียงเดี่ยว 2 + เตียงสองชั้น · ครัวเล็ก · เครื่องซักผ้าอบแห้ง',
+  park:'ในตึก · 3,000 เยน/คืน · สูงไม่เกิน 2.3 ม. · ต้องจอง',
+  bf:'ไม่มีอาหารเช้า ใช้ครัวในห้องหรือร้านสะดวกซื้อ',
+  konbini:'7-Eleven 24 ชม. ประมาณ 40 ม.',
+  loc:'สถานี Ueno เดิน 10–12 นาที',
+  flag:{t:'เช็กเอาต์ 10:00 มีรีวิวว่าเลยเวลา 1 ชั่วโมงโดนคิด 6,500 เยน',bad:false},
+  lat:35.716847,lng:139.781797,pid:'ChIJb5nSLeKPGGARqPRN737GMls',
+  bk:'monday-apart-premium-ueno',ag:'monday-apart-premium-ueno',agGuess:true},
+ {id:'andhere',pros:["ห้องใหญ่ 39–40 ตร.ม. มีบ่ออาบน้ำรวมฟรี", "มีครัวและเครื่องซักผ้า", "ใจกลาง Ueno เดินไป Ameyoko และ TAKEYA ได้", "เคยพักแล้ว รู้จักที่นี่"],cons:["แพงที่สุด และ Serena น่าจะเข้าที่จอดไม่ได้"],name:'&Here TOKYO UENO',area:'Ueno, Taito · เคยพักแล้ว',rating:8.7,price:94824,rooms:1,priceNote:'ห้องเดียว ไม่รวมอาหารเช้า (เพิ่มประมาณ 1,980 เยน/คน/วัน)',
+  agodaNote:'Trivago: Booking.com ถูกที่สุด',
+  s:{room:8,park:3,konbini:9,bf:6,loc:7},
+  room:'Deluxe Family 39 ตร.ม. (ดับเบิล 2 + โซฟาเบด) หรือ Family 40 ตร.ม. (ดับเบิล 2 + สองชั้น 2) · ครัวเล็ก · เครื่องซักผ้า · บ่ออาบน้ำรวมฟรี',
+  park:'ในร่ม 3,300 เยน/คืน เข้าออกได้ไม่จำกัด ต้องติดต่อโรงแรมเพื่อจอง · สำรอง: ลานใต้ดิน Ueno Chuo-dori ประมาณ 260 ม. (สูงไม่เกิน 2.0 ม.)',
+  bf:'บริการตัวเอง · ประมาณ 1,980 เยน · 07:00–10:00 · รีวิวกลาง ๆ',
+  konbini:'7-Eleven ประมาณ 80 ม. · Lawson ประมาณ 100 ม. (24 ชม. ทั้งคู่)',
+  loc:'สถานี Ueno เดินประมาณ 5 นาที ตรงข้ามสวน Ueno · เดินถึง Ameyoko และ TAKEYA',
+  flag:{t:'Booking.com ระบุว่าที่จอดรับรถสูงไม่เกิน 1.55 ม. Serena น่าจะเข้าไม่ได้ ต้องไปจอดลานสาธารณะ',bad:true},
+  lat:35.709325,lng:139.770940,pid:'ChIJfxcX8E2NGGARwjCdiIe1S4k',
+  bk:'amp-here-tokyo-ueno',ag:'here-tokyo-ueno',agGuess:true},
+ {id:'aima',pros:["ห้อง 38 ตร.ม. มีครัวและเครื่องซักผ้า", "7-Eleven ห่าง 30 ม.", "เดินถึงสถานี Ueno 5 นาที", "รีวิว 9.0"],cons:["ไม่มีที่จอดของตัวเองและไม่มีอาหารเช้า"],name:'AIMA Ueno East',area:'Higashiueno, Taito',rating:9.0,price:84685,rooms:1,priceNote:'ห้องเดียว ไม่มีอาหารเช้า',
+  agodaNote:'ยังไม่ได้เช็กกับ Trivago',
+  s:{room:8,park:3,konbini:9,bf:3,loc:7},
+  room:'38 ตร.ม. ดับเบิล 2 + โซฟาเบด · ครัว · เครื่องซักผ้า',
+  park:'ไม่มีที่จอดของตัวเอง · ลานใต้ดิน Ueno Chuo-dori ประมาณ 370 ม. (สูง 2.0 กว้าง 1.9 ม. วันธรรมดา 08:00–22:00 สูงสุด 2,000 เยน เสาร์อาทิตย์ไม่มีเพดาน) หรือ Ueno Parking Center (จองได้ สูงสุด 2,000/3,000 เยนต่อวัน)',
+  bf:'ไม่มีอาหารเช้า ใช้ครัวในห้องหรือร้านสะดวกซื้อ',
+  konbini:'7-Eleven 24 ชม. ประมาณ 30 ม.',
+  loc:'สถานี Ueno เดินประมาณ 5 นาที',
+  flag:null, lat:35.710490,lng:139.777539,pid:'ChIJI1VUdnqPGGARVX7UouEL6Rk',
+  bk:'aima-dong-jing',ag:'hotel-aima',agGuess:true},
+ {id:'sunroute',pros:["ถูกที่สุด 42,641 บาท รวมอาหารเช้า", "อยู่ Asakusa ใกล้สถานี"],cons:["ห้องเล็ก 20 ตร.ม. และ Serena น่าจะเข้าที่จอดไม่ได้"],name:'Hotel Sunroute Asakusa',area:'Kaminarimon, Taito',rating:8.3,price:42641,rooms:2,priceNote:'2 ห้อง รวมอาหารเช้า',
+  agodaNote:'Trivago ไม่มีราคา',
+  s:{room:4,park:1,konbini:7,bf:5,loc:7},
+  room:'Twin 20 ตร.ม. × 2 ห้อง',
+  park:'ลานเครื่องกล 34 คัน · 2,500 เยน/คืน · โทรจอง · ข้อมูลลานในตึกระบุสูงไม่เกิน 1.55 ม. เข้าออก 08:30–19:30',
+  bf:'ชุดญี่ปุ่นหรือตะวันตก 1,300 เยน · 07:00–10:30 · รีวิวกลาง ๆ',
+  konbini:'7-Eleven 24 ชม. ประมาณ 200 ม.',
+  loc:'Asakusa · สถานี Tawaramachi (สาย Ginza)',
+  flag:{t:'Serena น่าจะเข้าที่จอดไม่ได้ และคืนวันที่ 18 ถ้ากลับดึกเกิน 19:30 ลานปิดแล้ว',bad:true},
+  lat:35.710672,lng:139.792037,pid:'ChIJnTTctAyMGGARGGfA9Zr0sgM',
+  bk:'sunroute-asakusa',ag:'hotel-sunroute-asakusa',agGuess:true},
+];
+const lo=Math.min(...H.map(h=>h.price)), hi=Math.max(...H.map(h=>h.price));
+H.forEach(h=>{h.s.value=Math.round((10-(h.price-lo)/(hi-lo)*6)*10)/10});
+const KEY='tokyo-hotel-weights-v1';
+let W={}; CRIT.forEach(c=>W[c.k]=c.w);
+try{const s=JSON.parse(localStorage.getItem(KEY)||'null'); if(s) CRIT.forEach(c=>{if(typeof s[c.k]==='number')W[c.k]=s[c.k]})}catch(e){}
+const fmt=n=>n.toLocaleString('en-US');
+function score(h){let raw=0,mx=0;CRIT.forEach(c=>{raw+=W[c.k]*h.s[c.k];mx+=10*W[c.k]});return mx?Math.round(raw/mx*1000)/10:0}
+function color(v){return v>=8?'var(--good)':v>=5?'var(--blue)':v>=3?'var(--warn)':'var(--bad)'}
+function bookingUrl(h){return `https://www.booking.com/hotel/jp/${h.bk}.html?${BQ}${h.rooms}`}
+function agodaUrl(h){return `https://www.agoda.com/${h.ag}/hotel/tokyo-jp.html?${AQ}${h.rooms}`}
+function mapUrl(h){return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(h.name)}&query_place_id=${h.pid}`}
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;')}
+function renderWeights(){
+  const el=document.getElementById('weights');
+  el.innerHTML=CRIT.map(c=>`<label class="w" for="w-${c.k}"><span>${c.n}</span><input id="w-${c.k}" type="number" inputmode="decimal" min="0" max="5" step="0.1" value="${W[c.k]}"></label>`).join('');
+  CRIT.forEach(c=>document.getElementById('w-'+c.k).addEventListener('input',e=>{const v=parseFloat(e.target.value);W[c.k]=isNaN(v)||v<0?0:v;save();render()}));
+}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(W))}catch(e){}}
+function render(){
+  const list=H.map(h=>({h,t:score(h)})).sort((a,b)=>b.t-a.t);
+  document.getElementById('rank').innerHTML=list.map((x,i)=>`<a href="#${x.h.id}"><span class="pos num">${i+1}</span><span class="nm">${esc(x.h.name)}</span><span class="sc num">${x.t.toFixed(1)}</span><span class="bar"><i style="width:${x.t}%"></i></span><span class="meta num">${fmt(x.h.price)} บาท · ${x.h.rooms} ห้อง · ${esc(x.h.area.split(' · ')[0])}</span></a>`).join('');
+  document.getElementById('stable').innerHTML=`<thead><tr><th>ที่พัก</th>${CRIT.map(c=>`<th>${c.n}<br>(×${W[c.k]})</th>`).join('')}<th>รวม /100</th><th>ราคา (บาท)</th></tr></thead><tbody>${list.map((x,i)=>`<tr><td>${i+1}. ${esc(x.h.name.replace('Hotel Premier Tokyo ','').replace('Tokyo Bay ','').replace(' Hotel Tokyo','').replace('Hotel ',''))}</td>${CRIT.map(c=>`<td style="color:${color(x.h.s[c.k])}">${x.h.s[c.k]}</td>`).join('')}<td class="tot">${x.t.toFixed(1)}</td><td>${fmt(x.h.price)}</td></tr>`).join('')}</tbody>`;
+  document.getElementById('cards').innerHTML=list.map((x,i)=>{const h=x.h;return `
+  <article class="card" id="${h.id}">
+    <div class="card-head"><div><div class="label">อันดับ ${i+1}</div><h3>${esc(h.name)}</h3><div class="area">${esc(h.area)} · รีวิว Booking ${h.rating}</div></div>
+      <div class="big num">${x.t.toFixed(1)}<small>จาก 100</small></div></div>
+    <div class="price"><b class="num">${fmt(h.price)} บาท</b><span class="num">ประมาณ ${fmt(Math.round(h.price/5))} บาท/คืน · ${esc(h.priceNote)}</span><span>${esc(h.agodaNote)}</span></div>
+    <div class="scores">${CRIT.map(c=>`<div class="s"><div class="t"><span>${c.n}</span><b>${h.s[c.k]}</b></div><div class="mini"><i style="width:${h.s[c.k]*10}%;background:${color(h.s[c.k])}"></i></div></div>`).join('')}</div>
+    <ul class="pc">${h.pros.map(p=>`<li>${esc(p)}</li>`).join('')}${h.cons.map(p=>`<li class="con">${esc(p)}</li>`).join('')}</ul>
+    ${h.flag?`<div class="flag${h.flag.bad?' bad':''}">${esc(h.flag.t)}</div>`:''}
+    <dl>
+      <dt>ห้อง</dt><dd>${esc(h.room)}</dd>
+      <dt>ที่จอดรถ</dt><dd>${esc(h.park)}</dd>
+      <dt>อาหารเช้า</dt><dd>${esc(h.bf)}</dd>
+      <dt>ร้านสะดวกซื้อ</dt><dd>${esc(h.konbini)}</dd>
+      <dt>ทำเล</dt><dd>${esc(h.loc)}</dd>
+      <dt>พิกัด</dt><dd class="coord"><code class="num">${h.lat.toFixed(6)}, ${h.lng.toFixed(6)}</code><button type="button" data-copy="${h.lat.toFixed(6)}, ${h.lng.toFixed(6)}">คัดลอก</button></dd>
+    </dl>
+    <div class="links">
+      <a class="primary" href="${bookingUrl(h)}" target="_blank" rel="noopener">จอง Booking.com</a>
+      <a href="${agodaUrl(h)}" target="_blank" rel="noopener">จอง Agoda${h.agGuess?' *':''}</a>
+      <a href="${mapUrl(h)}" target="_blank" rel="noopener">Google Maps</a>
+    </div>
+  </article>`}).join('');
+}
+document.addEventListener('click',e=>{const b=e.target.closest('button[data-copy]');if(!b)return;const t=b.getAttribute('data-copy');
+  const done=()=>{const o=b.textContent;b.textContent='คัดลอกแล้ว';setTimeout(()=>b.textContent=o,1500)};
+  try{navigator.clipboard.writeText(t).then(done).catch(()=>sel(b))}catch(err){sel(b)}});
+function sel(b){const c=b.previousElementSibling;const r=document.createRange();r.selectNodeContents(c);const s=getSelection();s.removeAllRanges();s.addRange(r)}
+document.getElementById('reset').addEventListener('click',()=>{CRIT.forEach(c=>W[c.k]=c.w);save();renderWeights();render()});
+renderWeights();render();
+</script>
+
+</body>
+</html>
